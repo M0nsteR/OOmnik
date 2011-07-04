@@ -1,0 +1,31 @@
+                                      _     
+    __     __                      _ ( )    
+  (   `\ (   `\   ___ ___    ___  (_)| |/') 
+  |  _  ||  _  |/' _ ` _ `\/' _ `\| || , <  
+  | (_) || (_) || ( ) ( ) || ( ) || || |\`\ 
+  (_____)(_____)(_) (_) (_)(_) (_)(_)(_) (_)
+ 
+00mnik Conceptual Processor
+===========================
+
+This directory contains the source code distribution of 
+the  00mnik Conceptual Processor,  an advanced system
+of decoding,  parsing,  and semantic interpretation of 
+linear sequences of codes,  primarily the statements 
+produced by natural languages.
+
+The implementation is based on the theoretical assumptions
+of the 'Concept<->Code Model' developed by Dmitri Dmitriev.
+
+The name *00mnik* comes from Russian, where it means 
+'the Smart One', mostly used in an ironic sense. ;))  
+00mnik will do its best to understand the meaning 
+of your input and hopefully will learn from you!
+
+Have fun!
+
+DD
+
+
+
+

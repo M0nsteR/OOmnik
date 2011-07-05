@@ -1,0 +1,27 @@
+
+
+Compilation from source
+-----------------------
+
+You need the GNU packages automake and libtool installed in your system
+to compile 00mnik.
+
+1. Run the script
+
+./auto_init.sh
+
+to create all supporting files of autotools.
+
+
+2.  ./configure
+
+to create the Makefile.
+
+
+3. make
+
+to compile.
+
+
+To get back to the bare source distribution you can run
+the "auto_cleanup.sh" script to remove the autotools files.

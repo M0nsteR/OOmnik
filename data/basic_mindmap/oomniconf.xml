@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+
+<!--
+ *   Copyright (c) 2011 by Dmitri Dmitriev
+ *   All rights reserved.
+ *
+ *   This file is part of the OOmnik Conceptual Processor, 
+ *   and as such it is subject to the license stated
+ *   in the LICENSE file which you have received 
+ *   as part of this distribution.
+ *
+ *   Project homepage:
+ *   <http://www.oomnik.ru>
+ *
+ *   Initial author and maintainer:
+ *         Dmitri Dmitriev aka M0nsteR <dmitri@globbie.net>
+ *
+ *  
+ *   Basic MindMap Configuration
+ *
+-->
+
+
+<oomniconfig>
+   <db filename="basic.mm"/>
+
+   <codesystem name="Situation"/> 
+   <output format="JSON"/>
+
+   <includes>
+     <include filename="numeric/integer_as_utf8.xml"/>
+     <include filename="numeric/integer_as_utf16.xml"/>
+     <include filename="numeric/integer_as_singlebyte.xml"/>
+     <include filename="numeric/generic_number.xml"/> 
+     <include filename="numeric/integer_positional_decimal.xml"/>
+     <include filename="numeric/unicode_digits.xml"/>
+     <include filename="numeric/digit.xml"/>
+
+     <include filename="punctuation/unicode_punctuation.xml"/> 
+     <include filename="punctuation/punctuation.xml"/>
+
+<!-- <include filename="arabic/unicode_arabic.xml"/>
+     <include filename="arabic/alphabet_arabic.xml"/>
+     <include filename="arabic/phonocode.xml"/>
+     <include filename="arabic/statement.xml"/>
+-->
+
+     <include filename="russian/unicode_cyrillic.xml"/>
+     <include filename="russian/cp1251_cyrillic.xml"/>
+     <include filename="russian/alphabet_cyrillic.xml"/>
+     <include filename="russian/phonocode/phonocode.xml"/>
+     <include filename="russian/discourse/statement.xml"/>
+
+
+     <include filename="english/unicode_english.xml"/>
+     <include filename="english/alphabet_english.xml"/>
+     <include filename="english/phonocode/phonocode.xml"/>
+     <include filename="english/discourse/statement.xml"/>
+
+
+
+     <include filename="chinese/unicode_han.xml"/>
+     <include filename="chinese/ideocode.xml"/>
+     <include filename="chinese/ideocode_complex.xml"/>
+     <include filename="chinese/statement.xml"/>
+
+    <!-- generic concept statement -->
+
+    <include filename="discourse/statement.xml"/>
+
+    <!-- semantic groupings -->
+
+    <include filename="topics/topics.xml"/>
+
+    <!-- universal concepts -->
+    <include filename="universal/concepts.xml"/>
+
+  </includes>
+</oomniconfig>

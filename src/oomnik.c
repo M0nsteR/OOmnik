@@ -485,18 +485,18 @@ OOmnik_process(void *oomnik,
     int ret;
 
     output_buf = malloc(OUTPUT_BUF_SIZE);
-    if (!output_buf) return "<ERROR msg=\"Not enough memory for the output!\"/>";
+    if (!output_buf) return NULL;
    
     /* init new Decoder */
     ret = ooDecoder_new(&dec);
-    if (ret != oo_OK) return "<ERROR msg=\"Not enough memory for the next Decoder.\"/>";
+    if (ret != oo_OK) return NULL;
 
     ret = dec->set_codesystem(dec, self->default_codesystem);
 
     if (ret != oo_OK) {
 	printf("  Sorry, the default codesystem \"%s\" is not available :(\n",
 	     self->default_codesystem_name);
-	return "<ERROR msg=\"Default CodeSystem not available.\"/>";
+	return NULL;
     }
 
     dec->is_root = true;

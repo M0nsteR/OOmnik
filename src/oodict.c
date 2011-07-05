@@ -1,13 +1,25 @@
 /**
- *   Copyright (c) 2011 by Dima Dmitriev <http://www.oomnik.ru>
+ *   Copyright (c) 2011 by Dmitri Dmitriev
+ *   All rights reserved.
  *
  *   This file is part of the OOmnik Conceptual Processor, 
  *   and as such it is subject to the license stated
  *   in the LICENSE file which you have received 
  *   as part of this distribution.
  *
+ *   Project homepage:
+ *   <http://www.oomnik.ru>
+ *
+ *   Initial author and maintainer:
+ *         Dmitri Dmitriev aka M0nsteR <dmitri@globbie.net>
+ *
+ *   Code contributors:
+ *         * Jenia Krylov <info@e-krylov.ru>
+ *
+ *   --------
  *   oodict.c
  *   OOmnik Dictionary implementation
+ *
  */
 
 #include <stdio.h>
@@ -18,7 +30,8 @@
 #include "oolist.h"
 #include "oodict.h"
 
-static size_t oo_hash(const char *key)
+static size_t 
+oo_hash(const char *key)
 {
     const char *p = key;
     size_t h = 0;
@@ -55,7 +68,6 @@ ooDict_find_item(struct ooDict *self,
     l = (struct ooList*)self->hash->data[h];
 
     cur = l->head;
-
     while (cur) {
         cur_key = ((struct ooDictItem*)cur->data)->key;
         if (!strcmp(key, cur_key))

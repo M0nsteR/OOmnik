@@ -1,11 +1,22 @@
 /**
- *   Copyright (c) 2011 by Dima Dmitriev <http://www.oomnik.ru>
+ *   Copyright (c) 2011 by Dmitri Dmitriev
+ *   All rights reserved.
  *
  *   This file is part of the OOmnik Conceptual Processor, 
  *   and as such it is subject to the license stated
  *   in the LICENSE file which you have received 
  *   as part of this distribution.
  *
+ *   Project homepage:
+ *   <http://www.oomnik.ru>
+ *
+ *   Initial author and maintainer:
+ *         Dmitri Dmitriev aka M0nsteR <dmitri@globbie.net>
+ *
+ *   Code contributors:
+ *         * Jenia Krylov <info@e-krylov.ru>
+ *
+ *   ---------
  *   ooarray.c
  *   OOmnik Dynamic Array implementation
  */

@@ -1085,8 +1085,6 @@ int ooCodeSystem_new(struct ooCodeSystem **cs)
     self->use_numeric_codes = false;
     self->numeric_denotmap = NULL;
 
-    self->denotmap = NULL;
-    
     self->cache = NULL;
 
     self->constraints = NULL;

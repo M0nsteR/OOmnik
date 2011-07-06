@@ -441,7 +441,7 @@ ooCodeSystem_read_initcache(struct ooCodeSystem *self, xmlNode *input_node)
     if (DEBUG_CS_LEVEL_3)
 	printf("  ** Adding Linear Cache...\n");
 
-    ret = ooLinearCache_init(&self->cache);
+    ret = ooLinearCache_new(&self->cache);
     if (ret != oo_OK) {
 	xmlFree(provider_name);
 	return oo_NOMEM;

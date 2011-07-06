@@ -15,7 +15,7 @@
  *
  *   ---------
  *   ootopic.h
- *   OOmnik Decoder implementation
+ *   OOmnik Decoder
  */
 
 #ifndef OO_DECODER_H

@@ -93,9 +93,8 @@ typedef struct ooCodeSystem {
     NUMERIC_CODE_TYPE *numeric_denotmap;
     bool use_numeric_codes;
 
-    /* hybrid (in-memory cache + persistence) 
+    /* TODO: hybrid (in-memory cache + persistence) 
        storage of complex denotations */
-    struct ooDenotMap *denotmap;
 
     /* cache of linear sequences */
     struct ooLinearCache *cache;

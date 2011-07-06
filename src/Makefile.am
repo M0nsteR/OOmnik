@@ -12,7 +12,6 @@ liboomnik_la_SOURCES = oomnik.h oomnik.c\
                     oocode.h oocode.c\
                     oocodesystem.h oocodesystem.c\
                     oocomplex.h oocomplex.c\
-                    oodenotmap.h oodenotmap.c\
                     oodecoder.h oodecoder.c\
                     ooagenda.h ooagenda.c\
                     ooaccumulator.h ooaccumulator.c\
@@ -33,7 +32,6 @@ include_HEADERS =  oomnik.h ooconfig.h\
                     oocode.h\
                     oocodesystem.h\
                     oocomplex.h\
-                    oodenotmap.h\
                     oodecoder.h\
                     ooaccumulator.h\
                     ooagenda.h\

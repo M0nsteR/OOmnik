@@ -79,7 +79,6 @@ typedef struct ooDict
 
 } ooDict;
 
-
 /* constructor */
 extern int ooDict_new(struct ooDict **self);
 

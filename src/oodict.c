@@ -42,8 +42,6 @@ oo_hash(const char *key)
     return h;
 }
 
-
-
 static int
 ooDict_set_hash(struct ooDict *self,
 		oo_hash_func new_hash)

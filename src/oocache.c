@@ -14,7 +14,7 @@
  *         Dmitri Dmitriev aka M0nsteR <dmitri@globbie.net>
  *
  *   ---------
- *   oocache.h
+ *   oocache.c
  *   OOmnik Linear Cache implementation
  */
 
@@ -614,16 +614,18 @@ int ooLinearCache_match(struct ooLinearCache *self,
  */
 static
 int ooLinearCache_lookup(struct ooLinearCache *self,
-		   struct ooSegmentizer *segm,
-		   ooATOM *input,
-		   size_t input_len,
-		   size_t task_id,
-		   struct ooAgenda *agenda)
-{   size_t i, tail_buf[INPUT_BUF_SIZE], term_count = 0;
+			 struct ooSegmentizer *segm,
+			 ooATOM               *input,
+			 size_t               input_len,
+			 size_t               task_id,
+			 struct ooAgenda      *agenda)
+{   
+    size_t i, tail_buf[INPUT_BUF_SIZE], term_count = 0;
     struct ooConcUnit *cu = NULL, *src_cu = NULL;
     int ret;
 
-    if (DEBUG_CACHE_LEVEL_1) printf("  ** Cache Matrix lookup .....\n");
+    if (DEBUG_CACHE_LEVEL_1) 
+	printf("  ** Cache Matrix lookup .....\n");
 
     /* let the subordinate segmentizer produce terminal units */
     segm->input = input;

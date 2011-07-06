@@ -1,27 +1,34 @@
+Dependencies
+------------
+
+Please make sure you have the following development libraries
+installed in your system:
+
+   *  libxml2
+   *  libdb (Berkeley DB)
 
 
 Compilation from source
 -----------------------
 
-You need the GNU packages automake and libtool installed in your system
+You will need the GNU packages automake and libtool installed in your system
 to compile 00mnik.
 
 1. Run the script
 
-./auto_init.sh
+  ./auto_init.sh
 
-to create all supporting files of autotools.
+  to create all supporting files of autotools.
 
 
 2.  ./configure
 
-to create the Makefile.
+   to create the Makefile.
 
 
 3. make
 
-to compile.
-
+   to compile.
 
 To get back to the bare source distribution you can run
 the "auto_cleanup.sh" script to remove the autotools files.

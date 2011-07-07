@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+
+<!-- Integer gets encoded by one or more bytes  -->
+
+<conceptlist>
+
+<codesystem name="Unsigned Integer encoded as SingleByte"
+            codetype="SingleByte"
+            denottype="Unsigned Integer">
+</codesystem>
+
+</conceptlist>

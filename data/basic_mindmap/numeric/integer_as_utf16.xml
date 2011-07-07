@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+
+<!-- Integer gets encoded by two bytes as UTF-16  -->
+
+<conceptlist>
+
+<codesystem name="Unsigned Integer encoded as UTF-16"
+            codetype="UTF-16"
+            denottype="Unsigned Integer">
+</codesystem>
+
+</conceptlist>

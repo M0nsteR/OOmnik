@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+
+<!-- Russian Language Statement  -->
+<conceptlist>
+
+
+<codesystem name="Situation"
+             codetype="Situation"
+             denottype="Situation">
+
+      <codestruct type="evaluation" root="Situation">
+
+        <providers>
+
+          <provider name="Arabic Statement"/> 
+
+          <provider name="Chinese Statement"/>
+
+          <provider name="English Statement"/>
+
+          <provider name="French Statement"/>
+
+          <provider name="Russian Statement"/> 
+
+        </providers>
+
+      </codestruct>
+
+</codesystem>
+
+</conceptlist>

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+
+
+<conceptlist>
+
+<codesystem name="Generic Number">
+
+<codestruct>
+
+  <inheritors>
+    <inheritor name="Integer Positional Decimal"/>
+    <inheritor name="Integer Positional Hexadecimal"/>
+    <inheritor name="Integer Roman"/>
+  </inheritors>
+
+</codestruct>
+
+
+</codesystem>
+
+</conceptlist>

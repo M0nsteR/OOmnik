@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+
+
+<conceptlist>
+
+<codesystem name="Integer Positional Decimal">
+
+<codestruct type="positional">
+  <operation>
+    <step base="10"/>
+  </operation>
+
+  <providers>
+    <provider name="Digit Ideogram"/>
+  </providers>
+</codestruct>
+
+  <codeset>
+
+        <code name="INTEGER ZERO" denot="Numeric Integer"/>
+
+        <code name="INTEGER ONE" denot="Numeric Integer"/>
+
+        <code name="INTEGER TWO" denot="Numeric Integer"/>
+
+        <code name="INTEGER THREE" denot="Numeric Integer"/>
+
+        <code name="INTEGER FOUR" denot="Numeric Integer"/>
+
+        <code name="INTEGER FIVE" denot="Numeric Integer"/>
+
+        <code name="INTEGER SIX" denot="Numeric Integer"/>
+
+        <code name="INTEGER SEVEN" denot="Numeric Integer"/>
+
+        <code name="INTEGER EIGHT" denot="Numeric Integer"/>
+
+        <code name="INTEGER NINE" denot="Numeric Integer"/>
+
+ </codeset>
+
+
+</codesystem>
+
+</conceptlist>

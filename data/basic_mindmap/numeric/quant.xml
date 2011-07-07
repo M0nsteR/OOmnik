@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+
+<!-- Symbol Concept Map: 
+     Symbol is encoded by an Integer 
+-->
+
+<conceptlist>
+
+<codesystem name="Quant"
+            codetype="Digit"
+            denottype="Unsigned Integer">
+
+  <subsystems>
+    <subsystem name="Digit Ideogram"/>
+  </subsystems>
+
+  <codeset>
+     <code name="ONE">
+     </code>
+
+     <code name="TEN">
+     </code>
+
+     <code name="HUNDRED">
+         <derivation topic="TEN" oper="MULTIPLY"/>
+     </code>
+
+     <code name="THOUSAND">
+     </code>
+
+     <code name="MILLION">
+     </code>
+
+  </codeset>
+
+</codesystem>
+
+</conceptlist>

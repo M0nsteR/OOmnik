@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+
+<conceptlist>
+
+<codesystem name="Unicode for Digits"
+              polysemy="false"
+              use_numcodes="true">
+
+
+<codestruct>
+  <providers>
+    <provider name="Unsigned Integer encoded as UTF-8"/>
+  </providers>
+</codestruct>
+  
+  <codeset>
+        <code name="0x30" denot="DIGIT ZERO"/> 
+        <code name="0x31" denot="DIGIT ONE"/> 
+        <code name="0x32" denot="DIGIT TWO"/>
+        <code name="0x33" denot="DIGIT THREE"/>
+        <code name="0x34" denot="DIGIT FOUR"/>
+        <code name="0x35" denot="DIGIT FIVE"/>
+        <code name="0x36" denot="DIGIT SIX"/>
+        <code name="0x37" denot="DIGIT SEVEN"/>
+        <code name="0x38" denot="DIGIT EIGHT"/>
+        <code name="0x39" denot="DIGIT NINE"/>
+        
+  </codeset>
+
+</codesystem>
+
+</conceptlist>

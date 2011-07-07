@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+
+<conceptlist>
+
+<codesystem name="Digit Ideogram"
+              polysemy="false">
+
+<codestruct>
+  <providers>
+    <provider name="Unicode for Digits"/>
+  </providers>
+</codestruct>
+  
+  <codeset>
+        <code name="DIGIT ZERO"  denot="INTEGER ZERO"/> 
+        <code name="DIGIT ONE"   denot="INTEGER ONE"/> 
+        <code name="DIGIT TWO"   denot="INTEGER TWO"/>
+        <code name="DIGIT THREE" denot="INTEGER THREE"/>
+        <code name="DIGIT FOUR"  denot="INTEGER FOUR"/>
+        <code name="DIGIT FIVE"  denot="INTEGER FIVE"/>
+        <code name="DIGIT SIX"   denot="INTEGER SIX"/>
+        <code name="DIGIT SEVEN" denot="INTEGER SEVEN"/>
+        <code name="DIGIT EIGHT" denot="INTEGER EIGHT"/>
+        <code name="DIGIT NINE"  denot="INTEGER NINE"/>
+        
+  </codeset>
+
+</codesystem>
+
+</conceptlist>

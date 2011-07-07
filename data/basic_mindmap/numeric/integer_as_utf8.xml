@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+
+<!-- Integer gets encoded by multibyte sequence as UTF-8  -->
+
+<conceptlist>
+
+<codesystem name="Unsigned Integer encoded as UTF-8"
+            codetype="UTF-8"
+            denottype="Unsigned Integer">
+</codesystem>
+
+</conceptlist>

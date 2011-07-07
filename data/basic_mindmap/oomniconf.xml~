@@ -59,7 +59,7 @@
 
 
 
-<!--   <include filename="chinese/unicode_han.xml"/>
+<!-   <include filename="chinese/unicode_han.xml"/>
      <include filename="chinese/ideocode.xml"/>
      <include filename="chinese/ideocode_complex.xml"/>
      <include filename="chinese/statement.xml"/>

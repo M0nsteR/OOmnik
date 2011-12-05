@@ -6,6 +6,7 @@ lib_LTLIBRARIES = liboomnik.la
 
 liboomnik_la_SOURCES = oomnik.h oomnik.c\
                     oomindmap.h oomindmap.c\
+                    oodomain.h oodomain.c\
                     ooconcept.h ooconcept.c\
                     ootopic.h ootopic.c\
                     ooconstraint.h ooconstraint.c\
@@ -20,12 +21,14 @@ liboomnik_la_SOURCES = oomnik.h oomnik.c\
                     ooconcunit.h ooconcunit.c\
                     ooarray.h ooarray.c\
                     oolist.h oolist.c\
-                    oodict.h oodict.c
+                    oodict.h oodict.c\
+                    ooutils.h ooutils.c
 
 liboomnik_la_INCLUDE = /usr/include/libxml2
 
 include_HEADERS =  oomnik.h ooconfig.h\
                     oomindmap.h\
+                    oodomain.h\
                     ooconcept.h\
                     ootopic.h\
                     ooconstraint.h\
@@ -40,6 +43,7 @@ include_HEADERS =  oomnik.h ooconfig.h\
                     ooarray.h\
                     oolist.h\
                     oodict.h\
+                    ooutils.h\
                     ooconcunit.h
 
 bin_PROGRAMS = oomnik

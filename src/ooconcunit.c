@@ -39,7 +39,7 @@ ooConcUnit_check_parents(struct ooConcUnit *self, struct ooCode *code);
 static int
 ooConcUnit_add_child(struct ooConcUnit *self,
 		     struct ooComplex  *child,
-		     struct ooCodeAttr *attr);
+		     struct ooCodeSpec *spec);
 
  
 /****************************** PRESENTATION **********************************/
@@ -240,7 +240,7 @@ ooConcUnit_update_solutions(struct ooConcUnit *self)
 static int
 ooConcUnit_add_child(struct ooConcUnit *self,
 		     struct ooComplex  *child,
-		     struct ooCodeAttr *attr)
+		     struct ooCodeSpec *spec)
 {
     struct ooComplex *complex, *result_complex;
     int curr_weight = 0;
@@ -260,7 +260,7 @@ ooConcUnit_add_child(struct ooConcUnit *self,
      * to this complex */
     for (i = 0; i < self->num_complexes; i++) {
 	complex = self->complexes[i];
-	ret = complex->forget(complex, child, attr);
+	ret = complex->forget(complex, child, spec);
     }
 
     free_slot_idx = CONCUNIT_COMPLEX_POOL_SIZE - self->top_count - 1;
@@ -279,7 +279,7 @@ ooConcUnit_add_child(struct ooConcUnit *self,
 	}
 
 	/* try to merge these complexes */
-	ret = complex->join(complex, child, result_complex, attr);
+	ret = complex->join(complex, child, result_complex, spec);
 
 	if (DEBUG_CONC_LEVEL_3)
 	    printf("    == Join result: %d\n", ret);
@@ -340,7 +340,7 @@ ooConcUnit_save_remaining_slots(struct ooConcUnit *self)
 static int
 ooConcUnit_add_children(struct ooConcUnit *self,
 			struct ooConcUnit *child,
-			struct ooCodeAttr *attr)
+			struct ooCodeSpec *spec)
 {
     struct ooComplex *complex;
     size_t i;
@@ -369,7 +369,7 @@ ooConcUnit_add_children(struct ooConcUnit *self,
 	    complex->str(complex, 1);
 	}
 
-	ret = ooConcUnit_add_child(self, complex, attr);
+	ret = ooConcUnit_add_child(self, complex, spec);
 	if (ret != oo_OK) {
 	    if (DEBUG_CONC_LEVEL_3)
 		printf("   -- Failed to add complex %p :((\n", complex);
@@ -401,15 +401,23 @@ ooConcUnit_add_children(struct ooConcUnit *self,
 
 
 /**
- * find units of the same class and establish a group */
+ * find units of the same class and establish a group 
+ */
 static int
 ooConcUnit_check_peers(struct ooConcUnit *self)
 {
     struct ooConcUnit *peer;
-    struct ooCodeAttr attr;
+    struct ooCodeSpec spec;
+    size_t concid;
     int ret;
 
-    peer = self->agenda->index[self->concid];
+    concid = self->code->id;
+    if (self->code->baseclass)
+	concid = self->code->baseclass->id;
+
+    if (concid >= AGENDA_INDEX_SIZE) return oo_FAIL;
+
+    peer = self->agenda->index[concid];
     if (!peer) {
 	if (DEBUG_CONC_LEVEL_4)
 	    printf("  -- CU \"%s\" has no potential peers...\n", self->code->name);
@@ -420,9 +428,9 @@ ooConcUnit_check_peers(struct ooConcUnit *self)
 	printf("\n  Checking the peers of CU \"%s\" (mem: %p)\n",
 	       self->code->name, (void*)peer);
 
-    attr.operid = NEXT_IN_GROUP;
+    spec.operid = OO_NEXT;
 
-    while (peer != NULL) {
+    while (peer) {
 	if (DEBUG_CONC_LEVEL_4)
 	    printf("  !! CU \"%s\" (mem: %p, linear_pos: %lu)\n"
                    "     is trying to link with its peer (mem: %p, linear_pos: %lu)\n",
@@ -432,8 +440,7 @@ ooConcUnit_check_peers(struct ooConcUnit *self)
 	/* NB: only real units can form a group! */
 	if (!peer->is_present) goto next_peer;
 
-
-	ret = ooConcUnit_add_children(peer, self, &attr);
+	ret = ooConcUnit_add_children(peer, self, &spec);
 
     next_peer:
 	peer = peer->next;
@@ -459,7 +466,7 @@ ooConcUnit_check_linear_order(struct ooConcUnit *self,
 	       linear_order, (unsigned long)self->linear_pos, (unsigned long)child->linear_pos);
     }
 
-    if (linear_order == PREPOS) {
+    if (linear_order == OO_PRE_POS) {
 	if (self->linear_pos <= child->linear_pos) return oo_FAIL;
 
 	if (child->linear_pos + child->coverage > self->linear_pos) return oo_FAIL;
@@ -473,7 +480,7 @@ ooConcUnit_check_linear_order(struct ooConcUnit *self,
 	if (distance > MAX_CONTACT_DISTANCE) return oo_FAIL;
     }
 
-    if (linear_order == POSTPOS) {
+    if (linear_order == OO_POST_POS) {
 	if (self->linear_pos > child->linear_pos) return oo_FAIL;
     }
 
@@ -489,7 +496,7 @@ ooConcUnit_join_predicted(struct ooConcUnit *self,
     size_t i, j;
     struct ooConcUnit *child;
     struct ooComplex **specs;
-    struct ooCodeAttr *code_attr;
+    struct ooCodeSpec *code_spec;
     int ret;
 
     if (DEBUG_CONC_LEVEL_2) {
@@ -502,18 +509,18 @@ ooConcUnit_join_predicted(struct ooConcUnit *self,
     specs = pred_cu->complexes[0]->specs;
 
     /* check every child */
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	if (!specs[i]) continue;
 
 	child = specs[i]->base;
-	code_attr = code->children[i];
-	if (!code_attr) continue;
+	code_spec = code->children[i];
+	if (!code_spec) continue;
 
 	if (DEBUG_CONC_LEVEL_3)
-	    printf("    LINEAR ORDER CONSTRAINT: %d\n", code_attr->linear_order);
+	    printf("    LINEAR ORDER CONSTRAINT: %d\n", code_spec->linear_order);
 	    
-	if (code_attr->linear_order == PREPOS) {
-	    ret = ooConcUnit_check_linear_order(self, child, code_attr->linear_order);
+	if (code_spec->linear_order == OO_PRE_POS) {
+	    ret = ooConcUnit_check_linear_order(self, child, code_spec->linear_order);
 
 	    if (DEBUG_CONC_LEVEL_3)
 		printf("  == linear order check verdict: %d\n", ret);
@@ -521,7 +528,7 @@ ooConcUnit_join_predicted(struct ooConcUnit *self,
 	    if (ret != oo_OK) continue;
 	}
 
-	ooConcUnit_add_children(self, child, code_attr);
+	ooConcUnit_add_children(self, child, code_spec);
     }
     return oo_OK;
 }
@@ -532,13 +539,20 @@ ooConcUnit_check_children(struct ooConcUnit *self,
 			  struct ooCode *code)
 {
     struct ooConcUnit *cu;
+    size_t concid;
     int ret;
 
     if (DEBUG_CONC_LEVEL_3)
 	printf("\n    ?? Anybody waiting for the parent \"%s\" (%d)?\n", 
 	   code->name, code->id);
 
-    cu = self->agenda->index[code->id];
+    concid = self->code->id;
+    if (self->code->baseclass)
+	concid = self->code->baseclass->id;
+
+    if (concid >= AGENDA_INDEX_SIZE) return oo_FAIL;
+
+    cu = self->agenda->index[concid];
 
     if (DEBUG_CONC_LEVEL_3)
 	if (!cu) printf("      -- No predictions found.\n");
@@ -561,8 +575,8 @@ ooConcUnit_check_children(struct ooConcUnit *self,
     }
 
     /* check inheritance */
-    if (code->num_children && code->children[IS_SUBCLASS] != NULL)
-	    return ooConcUnit_check_children(self, code->children[IS_SUBCLASS]->code);
+    if (code->num_children && code->children[OO_IS_SUBCLASS] != NULL)
+	    return ooConcUnit_check_children(self, code->children[OO_IS_SUBCLASS]->code);
 
     return oo_FAIL;
 }
@@ -570,35 +584,41 @@ ooConcUnit_check_children(struct ooConcUnit *self,
 
 static int
 ooConcUnit_check_parent(struct ooConcUnit *self, 
-			oper_type operid, 
-			struct ooCodeAttr *child_attr)
+			oo_oper_type operid, 
+			struct ooCodeSpec *child_spec)
 {
     struct ooConcUnit *parent;
     struct ooComplex *complex;
-    struct ooCodeAttr *attr;
+    struct ooCodeSpec *spec;
     struct ooCode *parent_code;
-    size_t i, j;
+    size_t i, j, concid;
     int ret;
 
-    if (!child_attr->code) return oo_FAIL;
-    parent_code = child_attr->code;
+    if (!child_spec->code) return oo_FAIL;
+    parent_code = child_spec->code;
 
-    parent = self->agenda->index[parent_code->id];
-    attr = parent_code->children[operid];
+    concid = parent_code->id;
+    if (parent_code->baseclass)
+	concid = parent_code->baseclass->id;
+
+    if (concid >= AGENDA_INDEX_SIZE) return oo_FAIL;
+
+    parent = self->agenda->index[concid];
+    spec = parent_code->children[operid];
 
     /* existing parents */
     while (parent) {
 	if (!parent->is_present) goto next_parent;
 
-	if (attr && attr->linear_order != ANYPOS) {
+	if (spec && spec->linear_order != OO_ANY_POS) {
 
-	    ret = ooConcUnit_check_linear_order(parent, self, attr->linear_order);
+	    ret = ooConcUnit_check_linear_order(parent, self, spec->linear_order);
 	    if (DEBUG_CONC_LEVEL_4) 
 		printf("    == linear order check result: %d\n", ret);
 
 	    if (ret != oo_OK) goto next_parent;
 	}
-	ooConcUnit_add_children(parent, self, attr);
+	ooConcUnit_add_children(parent, self, spec);
     next_parent:
 	parent = parent->next;
     }
@@ -634,7 +654,7 @@ ooConcUnit_check_parent(struct ooConcUnit *self,
 	       parent_code->name, parent);
 
     /* implied parent linking */
-    if (child_attr->implied_parent) {
+    if (child_spec->implied_parent) {
 	if (DEBUG_CONC_LEVEL_3)
 	    printf("\n    !! Parent \"%s\" is implied and needs to be linked!\n", 
 		   parent_code->name);
@@ -644,6 +664,9 @@ ooConcUnit_check_parent(struct ooConcUnit *self,
 	parent->is_present = true;
 	ret = parent->link(parent);
     }
+
+    /* TODO: ellipsed parent linking */
+
 
 
     self->agenda->register_unit(self->agenda, parent, parent_code);
@@ -656,7 +679,7 @@ static int
 ooConcUnit_check_parents(struct ooConcUnit *self, struct ooCode *code)
 {   size_t i;
     struct ooCode *parent_code;
-    struct ooCodeAttr *attr;
+    struct ooCodeSpec *spec;
     bool gotcha = false;
     int ret;
 
@@ -666,13 +689,13 @@ ooConcUnit_check_parents(struct ooConcUnit *self, struct ooCode *code)
 
     /* inheritance goes first */
     if (code->num_children) {
-	if (code->children[IS_SUBCLASS]) {
+	if (code->children[OO_IS_SUBCLASS]) {
 	    if (DEBUG_CONC_LEVEL_3) {
 		printf("\n    NB: Before checking the parents of \"%s\"\n"
 		       "          we\'ll examine its superclass \"%s\"!\n", 
-		       code->name, code->children[IS_SUBCLASS]->code->name);
+		       code->name, code->children[OO_IS_SUBCLASS]->code->name);
 	    }
-	    ooConcUnit_check_parents(self, code->children[IS_SUBCLASS]->code);
+	    ooConcUnit_check_parents(self, code->children[OO_IS_SUBCLASS]->code);
 
 
 	}
@@ -682,17 +705,17 @@ ooConcUnit_check_parents(struct ooConcUnit *self, struct ooCode *code)
 	printf("\n    ?? parent codes of \"%s\":\n      ", code->name);
 
 	/* list parent codes */
-	for (i = 0; i < NUM_OPERS; i++) {
-	    if (i == IS_SUBCLASS) continue;
+	for (i = 0; i < OO_NUM_OPERS; i++) {
+	    if (i == OO_IS_SUBCLASS) continue;
 	    if (!code->parents[i]) continue;
-	    attr = code->parents[i];
+	    spec = code->parents[i];
 
 	    /* no need to check the implied parent */
-	    /*if (attr->implied_parent) continue;*/
+	    /*if (spec->implied_parent) continue;*/
 
-	    while (attr) {
-		printf("\"%s\"   ", attr->code->name);
-		attr = attr->next;
+	    while (spec) {
+		printf("\"%s\"   ", spec->code->name);
+		spec = spec->next;
 		gotcha = true;
 	    }
 	}
@@ -703,17 +726,17 @@ ooConcUnit_check_parents(struct ooConcUnit *self, struct ooCode *code)
     }
 
     /* check parent codes */
-    for (i = 0; i < NUM_OPERS; i++) {
-	if (i == IS_SUBCLASS) continue;
+    for (i = 0; i < OO_NUM_OPERS; i++) {
+	if (i == OO_IS_SUBCLASS) continue;
 	if (!code->parents[i]) continue;
 
-	attr = code->parents[i];
+	spec = code->parents[i];
 	/* no need to check the implied parent */
-	/*if (attr->implied_parent) continue;*/
+	/*if (spec->implied_parent) continue;*/
 	
-	while (attr) {
-	    ooConcUnit_check_parent(self, i, attr);
-	    attr = attr->next;
+	while (spec) {
+	    ooConcUnit_check_parent(self, i, spec);
+	    spec = spec->next;
 	}
     }
 
@@ -752,7 +775,7 @@ ooConcUnit_positional_link(struct ooConcUnit *self)
     c = self->complexes[0];
     prev_c = self->agenda->linear_last->complexes[0];
 
-    c->specs[PRECEEDS] = prev_c;
+    /*c->specs[PRECEEDS] = prev_c;*/
     c->weight += prev_c->weight;
     c->linear_begin = prev_c->linear_begin;
     c->linear_end = self->linear_pos + self->coverage;
@@ -773,17 +796,17 @@ ooConcUnit_link(struct ooConcUnit *self)
     if (code->baseclass)
 	code = code->baseclass;
 
-
     /* do not try to link unrecognized units */
     if (code->id == 0) {
-	self->agenda->linear_last = NULL;
+	if (DEBUG_CONC_LEVEL_1) 
+	    printf("Not linking unrecognized code...\n");
 	return oo_FAIL;
     }
 
     if (DEBUG_CONC_LEVEL_1)
 	printf("    !! Linking CU \"%s\" (linear_pos: %lu)"
 	       " with the current state of agenda...\n",
-	       self->code->name, self->linear_pos);
+	       code->name, self->linear_pos);
 
     /* positional linking needed */
     if (self->code->cs->type == CS_POSITIONAL)
@@ -818,7 +841,7 @@ ooConcUnit_link(struct ooConcUnit *self)
 
     if (code->num_children) {
 	ret = ooConcUnit_check_children(self, code);
-	if (ret == oo_OK) return oo_OK;
+	if (ret == oo_OK) return ret;
     }
 
 
@@ -837,7 +860,7 @@ static int
 ooConcUnit_make_instance(struct ooConcUnit *self, 
 			 struct ooCode *myclass,
 			 struct ooConcUnit *myclass_terminal)
-{   
+{
     struct ooComplex *complex;
     struct ooCodeUsage *usage;
 
@@ -877,7 +900,16 @@ ooConcUnit_make_instance(struct ooConcUnit *self,
     ret = complex->reset(complex);
 
     complex->is_free = false;
-    complex->weight = coverage * coverage;
+
+    /* give more weight to the sequences with no garbage in-between */
+    if (myclass_terminal->is_sparse)
+	complex->weight = coverage;
+    else
+	complex->weight = coverage * coverage * coverage;
+
+    if (myclass->verif_level > 0) 
+	complex->weight *= myclass->verif_level * CODE_VERIFICATION_BONUS;
+
     complex->linear_begin = pos;
     complex->linear_end = pos + coverage;
     complex->linear_index[pos] = complex;
@@ -885,12 +917,13 @@ ooConcUnit_make_instance(struct ooConcUnit *self,
     /* add interps */
     for (i = 0; i < myclass->num_usages; i++) {
 	usage = myclass->usages[i];
+
 	if (!usage->conc) continue;
-	if (i > complex->num_interps) break;
-	complex->interps[i]->conc = usage->conc;
+	if (complex->num_interps == INTERP_POOL_SIZE) break;
+
+	complex->interps[complex->num_interps]->conc = usage->conc;
 	complex->num_interps++;
     }
-
     self->num_complexes = 1;
 
     return oo_OK;
@@ -905,7 +938,6 @@ ooConcUnit_reset(struct ooConcUnit *self)
     struct ooComplex *complex;
     struct ooConcUnit **cu;
 
-    if (self == NULL) return oo_FAIL;
     self->linear_pos = 0;
     self->is_present = false;
     self->is_implied = false;
@@ -925,7 +957,8 @@ ooConcUnit_reset(struct ooConcUnit *self)
     self->terminals = NULL;
     self->num_terminals = 0;
     self->start_term_pos = 0;
-    
+    self->is_sparse = false;
+
     self->is_group = false;
     self->common_unit = NULL;
 

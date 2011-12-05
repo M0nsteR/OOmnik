@@ -37,6 +37,7 @@
 #include "ooconcunit.h"
 #include "oosegmentizer.h"
 #include "ooagenda.h"
+#include "ooaccumulator.h"
 
 /*
  * prototypes 
@@ -73,6 +74,8 @@ OOmnik_del(OOmnik *self)
 
     /* free up yourself */
     free(self);
+
+    xmlCleanupParser();
 
     return oo_OK;
 }
@@ -348,7 +351,7 @@ OOmnik_reload(struct OOmnik *self)
 static int
 OOmnik_interact(struct OOmnik *self)
 {
-    char buf[INPUT_BUF_SIZE];
+    char buf[INTERACT_INPUT_BUF_SIZE];
     size_t task_id = 1;
     output_type format = FORMAT_XML;
     int ret;
@@ -379,6 +382,7 @@ OOmnik_interact(struct OOmnik *self)
 	}
 
 	printf("%s\n", result);
+
 	OOmnik_free_result(result);
 
 	fprintf(stderr, ">>> ");
@@ -424,13 +428,14 @@ OOmnik_read_data(struct OOmnik *self,
     for (i = 0; i < self->num_includes; i++) {
 	include_filename = self->includes[i];
 	fprintf(stderr, "  ++ importing %s...\n", include_filename);
-	ret = mm->import_file(mm, include_filename);
+	ret = mm->import_file(mm, include_filename, NULL);
     }
 
     fprintf(stderr, "  OOmnik: resolving name references...\n");
     ret = mm->resolve_refs(mm);
 
-    /*mm->str(mm);*/
+    if (DEBUG_LEVEL_3)
+	mm->str(mm);
 
     if (ret != oo_OK) {
 	    fprintf(stderr, "  -- Couldn't resolve the references "
@@ -463,7 +468,7 @@ OOmnik_read_data(struct OOmnik *self,
 
 
 EXPORT extern int
-OOmnik_free_result(void *outbuf)
+OOmnik_free_result(const char *outbuf)
 {
     char *buf = (char*)outbuf;
     if (buf)
@@ -491,6 +496,10 @@ OOmnik_process(void *oomnik,
     ret = ooDecoder_new(&dec);
     if (ret != oo_OK) return NULL;
 
+    dec->is_root = true;
+    dec->oomnik = self;
+    dec->format = (output_type)format;
+
     ret = dec->set_codesystem(dec, self->default_codesystem);
 
     if (ret != oo_OK) {
@@ -499,12 +508,11 @@ OOmnik_process(void *oomnik,
 	return NULL;
     }
 
-    dec->is_root = true;
-    dec->oomnik = self;
-    dec->format = (output_type)format;
-
     ret = dec->process(dec, input);
 
+    /* TODO: add error explanation text to Decoder
+     * and return it to the caller */
+    if (ret != oo_OK) return NULL;
 
     /*if (!dec->agenda->accu->output_buf) {
 	free(output_buf);
@@ -512,12 +520,10 @@ OOmnik_process(void *oomnik,
 	return NULL;
 	}*/
 
-
     dec->agenda->accu->present_solution(dec->agenda->accu,
 					output_buf, OUTPUT_BUF_SIZE);
 
     /*sprintf(output_buf, "%s", dec->agenda->accu->solution);*/
-
     ret = dec->del(dec);
 
     return output_buf;
@@ -544,6 +550,7 @@ OOmnik_create(const char *conf_name)
     return (void*)oomnik;
 
 error:
+    printf("Removing OOmnik....\n\n");
     oomnik->del(oomnik);
     return NULL;
 }

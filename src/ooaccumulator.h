@@ -22,10 +22,18 @@
 #define OO_ACCUMULATOR_H
 
 
-#include "ooconcunit.h"
+#include "ootopic.h"
 #include "ooconfig.h"
 
 typedef enum accu_t { ACCU_LINEAR, ACCU_OPERATIONAL, ACCU_POSITIONAL } accu_t;
+
+struct ooConcFreq {
+    struct ooConcept *conc;
+    float weight;
+
+    struct ooConcFreq *gt;
+    struct ooConcFreq *lt;
+};
 
 
 /** 
@@ -39,18 +47,12 @@ typedef struct ooAccu {
 
     accu_t type;
 
-    /* semantics of cell indices */
-    bool linear_structure;
-
-    const char *header;
-    const char *footer;
-
     /* amount of long term memory for the output */
     char *output_buf;
     char *curr_output_buf;
     size_t output_total_space;
     size_t output_free_space;
-  
+
     /* topic solutions */
     struct ooTopicSolution topic_solution_storage[TOPIC_POOL_SIZE];
     struct ooTopicSolution *topic_solutions[TOPIC_POOL_SIZE];
@@ -59,6 +61,15 @@ typedef struct ooAccu {
     size_t max_num_topics;
     size_t num_topic_solutions;
     size_t rating_count;
+
+    struct ooConcFreq freq_storage[ACCU_CONCFREQ_STORAGE_SIZE];
+    size_t num_concfreqs;
+    struct ooConcFreq *freq_top;
+    struct ooConcFreq *freq_tail;
+
+    struct ooConcFreq **concept_index;
+    size_t num_concepts;
+
 
     /* temp variables */
     const char *solution;
@@ -69,19 +80,20 @@ typedef struct ooAccu {
     /***********  public methods ***********/
     int (*del)(struct ooAccu *self);
     int (*str)(struct ooAccu *self);
-    int (*reset)(struct ooAccu *self);
+    int (*init)(struct ooAccu *self);
 
-    int (*build_topic_index)(struct ooAccu *self, 
-			     struct ooMindMap *mindmap);
+    int (*build_indices)(struct ooAccu *self, 
+			 struct ooMindMap *mindmap);
 
-    int (*update_topic)(struct ooAccu *self, 
-			struct ooTopicIngredient *ingr,
-			struct ooComplex *complex);
+    int (*update_topic)(struct ooAccu *self,
+			struct ooTopicIngredient *ingr);
+
+    int (*update_conc_rating)(struct ooAccu *self, 
+			      struct ooConcept *conc);
 
     int (*present_solution)(struct ooAccu *self,
 			    char *buf, 
 			    size_t buf_size);
-
 
     int (*update)(struct ooAccu *self, struct ooAgenda *agenda);
 

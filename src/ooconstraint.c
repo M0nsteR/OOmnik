@@ -34,7 +34,6 @@ int ooConstraintGroup_del(struct ooConstraintGroup *self)
 {
     struct ooConstraintGroup *cg, *next_cg;
     struct ooConstraint *c, *next_c;
-    size_t i;
 
     c = self->atomic_constraints;
     while (c) {
@@ -61,8 +60,9 @@ int ooConstraintGroup_del(struct ooConstraintGroup *self)
     return oo_OK;
 }
 
-static
-int ooConstraintGroup_add_constraint(struct ooConstraintGroup *cg,
+/*
+static int 
+ooConstraintGroup_add_constraint(struct ooConstraintGroup *cg,
 				     int constraint_type,
 				     linear_type direction,
 				     int weight,
@@ -70,21 +70,23 @@ int ooConstraintGroup_add_constraint(struct ooConstraintGroup *cg,
 {
     return oo_OK;
 }
+*/
 
-static
-wchar_t* ooConstraintGroup_str(struct ooConstraintGroup *self)
+
+static const char* 
+ooConstraintGroup_str(struct ooConstraintGroup *self)
 {
     struct ooConstraintGroup *peer, *child;
     struct ooConstraint *c;
 
-    char *logic_oper_name = "AND";
+    const char *logic_oper_name = "AND";
 
     if (self->logic_oper) logic_oper_name = "OR";
 
-    printf("\n    Constraints (logic %s):\n", logic_oper_name, self);
+    printf("\n    Constraints (logic %s):\n", logic_oper_name);
 
     c = self->atomic_constraints;
-    while (c != NULL) {
+    while (c) {
 	printf("    -- atomic constraint: type: %d value: %d weight: %d\n", 
 	       c->constraint_type, c->value, c->weight);
 	c = c->next;
@@ -103,8 +105,7 @@ wchar_t* ooConstraintGroup_str(struct ooConstraintGroup *self)
 	peer->str(peer);
 	peer = peer->next;
     }
-    
-    return L"";
+    return "";
 }
 
 
@@ -115,9 +116,8 @@ ooConstraint_read_atomic_constraint(struct ooConstraint *self,
 				    struct ooCode *code,
 				    xmlNode *input_node)
 {
-    xmlNode *attr_node;
+    xmlAttr *attr_node;
     struct ooConstraintType *ct = NULL;
-    struct ooConstraint *c;
     char *value = NULL;
     size_t i;
 
@@ -180,7 +180,7 @@ ooConstraintGroup_read_children(struct ooConstraintGroup *self,
     for (cur_node = input_node; cur_node; cur_node = cur_node->next) {
 	if (cur_node->type != XML_ELEMENT_NODE) continue;
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"cgroup"))) {
-	    ret = ooConstraintGroup_init(&cg);
+	    ret = ooConstraintGroup_new(&cg);
 	    if (ret != oo_OK) return ret;
 
 	    value = (char*)xmlGetProp(cur_node,  (const xmlChar *)"oper");
@@ -215,7 +215,6 @@ ooConstraintGroup_read_XML(struct ooConstraintGroup *self,
 			   xmlNode *input_node)
 {
     xmlNode *cur_node;
-    struct ooConstraintGroup *cg = NULL, *child_cg;
     char *value;
     int ret = FAIL;
 
@@ -238,9 +237,8 @@ ooConstraintGroup_read_XML(struct ooConstraintGroup *self,
 
 /*  ooConstraintGroup Initializer */
 extern int 
-ooConstraintGroup_init(struct ooConstraintGroup **cg)
+ooConstraintGroup_new(struct ooConstraintGroup **cg)
 {   
-    int ret, i;
     struct ooConstraintGroup *self = malloc(sizeof(struct ooConstraintGroup));
     if (!self) return oo_NOMEM;
 

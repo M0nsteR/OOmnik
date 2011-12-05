@@ -26,9 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ooarray.h"
-#include "oolist.h"
 #include "oodict.h"
+#include "oolist.h"
 
 static size_t 
 oo_hash(const char *key)
@@ -183,9 +182,12 @@ static int ooDict_del(struct ooDict *self)
         }
         l->del(l);
     }
+
     self->hash->del(self->hash);
 
-    return true;
+    free(self);
+
+    return oo_OK;
 }
 
 static int

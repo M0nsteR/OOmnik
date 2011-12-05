@@ -29,19 +29,17 @@
 #include "oocodesystem.h"
 
 typedef enum code_type { CODE_NONE,
-			 CODE_PREFIX_NON_TERMINAL,
                          CODE_STATIC,
-			 CODE_CONTACT_TERM_SEPARATOR,
-			 CODE_STATIC_NON_TERMINAL, 
-			 CODE_DYNAMIC_NON_TERMINAL, 
+                         CODE_ROLE_MARKER,
 			 CODE_GROUP_MARKER, 
+			 CODE_RELATION_MARKER, 
 			 CODE_ALTERN_MARKER, 
 			 CODE_SEPARATOR } code_type;
 
 /* forward declaration */
 struct ooCode;
 
-typedef struct ooDeriv {
+typedef struct ooCodeDeriv {
     char *name;
     char *usage_name;
     struct ooCode *code;
@@ -49,7 +47,7 @@ typedef struct ooDeriv {
 
     /* topic or spec? */
     bool used_as_topic;
-    oper_type operid;
+    oo_oper_type operid;
 
     char *arg_code_name;
     char *arg_code_usage_name;
@@ -57,15 +55,16 @@ typedef struct ooDeriv {
     struct ooCodeUsage *arg_code_usage;
 
     /* for search indices */
-    struct ooDeriv *next;
+    struct ooCodeDeriv *next;
 
-    int (*del)(struct ooDeriv *self);
-    const char* (*str)(struct ooDeriv *self);
+    int (*del)(struct ooCodeDeriv *self);
+    const char* (*str)(struct ooCodeDeriv *self);
     
 
-} ooDeriv;
+} ooCodeDeriv;
 
 typedef struct ooCodeUsage {
+
     char *name;
     char *conc_name;
     struct ooConcept *conc;
@@ -79,7 +78,7 @@ typedef struct ooCodeUsage {
     struct ooCodeUsage **usages;
     size_t num_usages;
 
-    struct ooDeriv **derivs;
+    struct ooCodeDeriv **derivs;
     size_t num_derivs;
 
     int (*del)(struct ooCodeUsage *self);
@@ -110,9 +109,9 @@ typedef struct ooCodeCache {
 } ooCodeCache;
 
 
-/* Code Attribute  */
-typedef struct ooCodeAttr {
-    oper_type operid;
+/* Code Specifier  */
+typedef struct ooCodeSpec {
+    oo_oper_type operid;
     mindmap_size_t concid;
     
     char *code_name;
@@ -123,8 +122,14 @@ typedef struct ooCodeAttr {
     bool stackable;
     bool implied_parent;
 
-    struct ooCodeAttr *next;
-} ooCodeAttr;
+    /* logic of the list */
+    logic_opers group_logic;
+    struct ooCodeSpec *next;
+
+    /* inner lists */
+    struct ooCodeSpec *specs;
+  
+} ooCodeSpec;
 
 
 typedef struct ooCode {
@@ -141,6 +146,9 @@ typedef struct ooCode {
     /* inherit syntactic properties from the baseclass */
     char *baseclass_name;
     struct ooCode *baseclass;
+
+    /* human verification of code's correctness */
+    int verif_level;
 
     struct ooCodeCache *cache;
     bool is_cached;
@@ -159,14 +167,15 @@ typedef struct ooCode {
     char **implied_code_names;
     size_t num_implied_codes;
 
-    /* nested complex */
-    struct ooCodeUnit *complex;
+    /* shared code */
+    struct ooCodeUnit *shared;
 
     /* syntax */
-    struct ooCodeAttr *parents[NUM_OPERS];
+    struct ooCodeSpec *parents[OO_NUM_OPERS];
     size_t num_parents;
 
-    struct ooCodeAttr *children[NUM_OPERS];
+    struct ooCodeSpec *children[OO_NUM_OPERS];
+    logic_opers spec_group_logic;
     size_t num_children;
 
     /* units that can be grouped */
@@ -180,11 +189,10 @@ typedef struct ooCode {
     /* linear delimiters like (), {} etc. */
     bool has_linear_delimiters;
 
-
     /* derivation search engine:
      * lookup by oper_id and code reference 
      */
-    struct ooDeriv *deriv_matches[NUM_OPERS];
+    struct ooCodeDeriv *deriv_matches[OO_NUM_OPERS];
 
     /***********  public methods ***********/
     int (*del)(struct ooCode *self);
@@ -196,18 +204,16 @@ typedef struct ooCode {
     /* resolve references */
     int (*resolve_refs)(struct ooCode *self);
 
-
-
 } ooCode;
 
-typedef struct ooCodeUnitAttr {
-    oper_type operid;
+typedef struct ooCodeUnitSpec {
+    oo_oper_type operid;
     struct ooCodeUnit *unit;
-} ooCodeUnitAttr;
+} ooCodeUnitSpec;
 
 typedef struct ooCodeUnit {
     struct ooCode *code;
-    struct ooCodeUnitAttr **specs;
+    struct ooCodeUnitSpec **specs;
     size_t num_specs;
 
 } ooCodeUnit;

@@ -31,8 +31,8 @@ static
 int ooList_del(struct ooList *self)
 {
     self->clear(self);
-
-    return true;
+    free(self);
+    return oo_OK;
 }
 
 static int 

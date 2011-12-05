@@ -22,18 +22,15 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ooconfig.h"
-
-#include "oocodesystem.h"
-#include "oocode.h"
-#include "ooconcunit.h"
-#include "ooconstraint.h"
-#include "ooagenda.h"
 #include "oocomplex.h"
-#include "oodecoder.h"
+#include "ooconcunit.h"
 #include "ooaccumulator.h"
+#include "oodecoder.h"
 
-struct ooMindMap;
+#include "ooconcept.h"
+#include "oodomain.h"
+
+#include "ooconfig.h"
 
 /* declarations */
 static int 
@@ -82,7 +79,7 @@ ooComplex_str(struct ooComplex *self,
 	   (unsigned long)self->num_interps,
 	   self->weight);
 
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	complex = self->specs[i];
 	if (!complex) continue;
 	if (operids) opername = operids[i];
@@ -93,7 +90,8 @@ ooComplex_str(struct ooComplex *self,
 
     if (self->num_interps) {
 	for (i = 0; i < self->num_interps; i++) {
-	    printf("  INTERP: %s\n", self->interps[i]->conc->name);
+	    if (self->interps[i]->conc)
+		printf("  INTERP: %s\n", self->interps[i]->conc->name);
 	}
     }
 
@@ -138,7 +136,7 @@ ooComplex_calc_dimensions(struct ooComplex *self,
     int ret;
 
     /* explore your children */
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	c = self->specs[i];
 	if (!c) continue;
 
@@ -160,7 +158,122 @@ ooComplex_calc_dimensions(struct ooComplex *self,
     return oo_OK;
 }
 
-static size_t
+
+static int
+ooComplex_write_JSON_interps(struct ooComplex *self,
+			     char *output_buf,
+			     size_t *output_buf_size)
+{
+
+    char *buf = output_buf;
+    size_t buf_size = 0;
+    size_t global_buf_size;
+    struct ooInterp *interp;
+    struct ooConcept *conc;
+    struct ooDomain *domain;
+    struct ooDomain *subdomain;
+    const char *domain_name;
+    const char *parent_name;
+    int i, j;
+
+    /* serialize interps */
+    sprintf(buf, "[");
+    buf++;
+    global_buf_size++;
+  
+    for (i = 0; i < self->num_interps; i++) {
+	interp = self->interps[i];
+	if (!interp->conc) continue;
+
+	/* print separator */
+	if (i) {
+	    sprintf(buf, ",");
+	    buf++;
+	    global_buf_size++;
+	}
+
+	if (!interp->conc->domain) {
+	    sprintf(buf, "{\"conc\": \"%s\",\"domain\":\"?\"}",
+		    interp->conc->name);
+	    continue;
+	}
+
+	domain = interp->conc->domain;
+
+	domain->str(domain);
+
+	parent_name = "?";
+
+	if (domain->parent && domain->parent->title)
+	    parent_name = domain->parent->title;
+	sprintf(buf,
+		"{\"conc\": \"%s\","
+		"\"domain\":\"%s\",\"domain_id\":\"%d\","
+		"\"parent\":\"%s\"",
+		interp->conc->name,
+		domain->title, 
+		(unsigned int)domain->numid,
+		parent_name);
+	buf_size = strlen(buf);
+	buf += buf_size;    
+
+	/* subdomains */
+	if (domain->num_subdomains) {
+	    sprintf(buf, ",\"subdomains\":[");
+	    buf_size = strlen(buf);
+	    buf += buf_size;    
+
+	    for (j = 0; j < domain->num_subdomains; j++) {
+		subdomain = domain->subdomains[j];
+		if (!subdomain) continue;
+		if (j) {
+		    sprintf(buf, ",");
+		    buf++;
+		}
+		sprintf(buf, "{\"name\": \"%s\",\"id\":\"%d\"}",
+			subdomain->title, 
+			(unsigned int)subdomain->numid);
+		buf_size = strlen(buf);
+		buf += buf_size;    
+	    }
+	    sprintf(buf, "]");
+	    buf++;
+	}
+
+	/* peer concepts */
+	if (domain->num_concepts) {
+	    sprintf(buf, ",\"peers\":[");
+	    buf_size = strlen(buf);
+	    buf += buf_size;    
+
+	    for (j = 0; j < domain->num_concepts; j++) {
+		conc = domain->concepts[j];
+		if (!conc) continue;
+		if (j) {
+		    sprintf(buf, ",");
+		    buf++;
+		}
+		sprintf(buf, "{\"name\": \"%s\",\"id\":\"%d\"}",
+			conc->name, 
+			(unsigned int)conc->numid);
+		buf_size = strlen(buf);
+		buf += buf_size;
+	    }
+	    sprintf(buf, "]");
+	    buf++;
+	}
+
+	sprintf(buf, "}");
+	buf++;
+    }
+
+    sprintf(buf, "]");
+
+
+    return oo_OK;
+}
+
+static int
 ooComplex_present_JSON_table_row(struct ooComplex *self,
 				 struct ooAccu *accu,
 				 char *parent_buf,
@@ -170,50 +283,59 @@ ooComplex_present_JSON_table_row(struct ooComplex *self,
 {
     struct ooComplex *c;
     size_t i, curr_max_levels = 0, child_num_levels = 0;
+    size_t global_term_pos = accu->decoder->term_count;
+
     char *gloss;
+
     char output[TEMP_BUF_SIZE];
-    char *tmp_buf = output;
+    char *curr_out_buf = output;
+    size_t curr_out_buf_size = 0;
+
+    char interp_buf[TEMP_BUF_SIZE];
+    size_t interp_buf_size = 0;
 
     const char *row_end_marker = "]";
     size_t row_end_marker_size = strlen(row_end_marker);
 
-    size_t tmp_buf_size = 0, output_size = 0;
+    size_t output_size = 0;
     bool is_non_terminal = false;
     int ret;
 
-    /*if (self->base->terminals && self->base->terminals->code)
-	gloss = self->base->terminals->code->name;
-    else
-    gloss = "";*/
+    /* writing a list of interps */
+    ret = ooComplex_write_JSON_interps(self, &interp_buf, &interp_buf_size);
 
-    gloss = self->base->code->name;
+    if (self->base && self->base->code)
+	gloss = self->base->code->name;
 
     /* terminal cell */
     if (self->base->terminals) {
 
 	/* NB: no comma needed in the first row */
 	if (accu->begin_row) {
-	    sprintf(tmp_buf,
-		    ",[{\"type\":\"term\", \"colspan\":\"%d\","
-		    "\"content\":\"%s\"}",
-		    depth, gloss);
-	}
-	else {
-	    sprintf(tmp_buf,
-		    "[{\"type\":\"term\", \"colspan\":\"%d\","
-		    "\"content\":\"%s\"}",
-		    depth, gloss);
+	    sprintf(curr_out_buf, ",");
+	    curr_out_buf++;
+	    output_size++;
+	} else {
 	    accu->begin_row = true;
 	    accu->begin_cell = true;
 	}
 
-	tmp_buf_size = strlen(tmp_buf);
-	tmp_buf += tmp_buf_size;
-	output_size += tmp_buf_size;
+	sprintf(curr_out_buf,
+		"[{\"type\":\"term\",\"colspan\":\"%d\","
+		"\"content\":\"%s\","
+		"\"linear_begin\":\"%d\",\"length\":\"%d\","
+		"\"interps\": %s}",
+		depth, gloss, global_term_pos + self->base->start_term_pos, 
+		self->base->num_terminals,
+		interp_buf);
+
+	curr_out_buf_size = strlen(curr_out_buf);
+	curr_out_buf += curr_out_buf_size;
+	output_size += curr_out_buf_size;
     }
 
     /* non-terminal cell  */
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	c = self->specs[i];
 	if (!c) continue;
 	is_non_terminal = true;
@@ -225,20 +347,23 @@ ooComplex_present_JSON_table_row(struct ooComplex *self,
 	if (self->num_interps)
 	    gloss = self->interps[0]->conc->name;
 
-	sprintf(tmp_buf, 
+	sprintf(curr_out_buf, 
 		",{\"type\": \"topic\","
-		"\"rowspan\": \"%d\",\"content\":\"%s\"}", 
-		self->num_terminals, gloss);
+		"\"rowspan\": \"%d\",\"content\":\"%s\","
+                "\"linear_begin\":\"%d\",\"length\":\"%d\"}",
+ 		self->num_terminals, gloss,
+		self->linear_begin, 
+		self->linear_end - self->linear_begin);
 
-	tmp_buf_size = strlen(tmp_buf);
-	tmp_buf += tmp_buf_size;
-	output_size += tmp_buf_size;
+	curr_out_buf_size = strlen(curr_out_buf);
+	curr_out_buf += curr_out_buf_size;
+	output_size += curr_out_buf_size;
     }
 
     /* need to append some stuff from a parent */
     if (parent_buf) {
-	sprintf(tmp_buf, "%s", parent_buf);
-	tmp_buf += parent_buf_size;
+	sprintf(curr_out_buf, "%s", parent_buf);
+	curr_out_buf += parent_buf_size;
 	output_size += parent_buf_size;
     }
 
@@ -253,7 +378,7 @@ ooComplex_present_JSON_table_row(struct ooComplex *self,
     }
 
     /* present your children */
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	c = self->specs[i];
 	if (!c) continue;
 	ooComplex_present_JSON_table_row(c, 
@@ -262,6 +387,7 @@ ooComplex_present_JSON_table_row(struct ooComplex *self,
 					 depth - 1, row_count);
     }
 
+    printf("Ready!\n");
 
     return oo_OK;
 }
@@ -270,7 +396,7 @@ ooComplex_present_JSON_table_row(struct ooComplex *self,
 static int
 ooComplex_present_JSON_list(struct ooComplex *self, 
 			    struct ooAccu *accu)
-{  
+{
     struct ooConcUnit *cu;
     size_t num_terminals = 0;
     size_t max_depth = 0;
@@ -363,7 +489,7 @@ ooComplex_present_XML(struct ooComplex *self,
     }
 
     /* subordinate specs */
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	complex = self->specs[i];
 	if (!complex) continue;
 	if (operids) opername = operids[i];
@@ -404,33 +530,56 @@ ooComplex_topic_update(struct ooComplex *self,
 
     /* walk over your concept proposition structure */
     for (i = 0; i < self->num_interps; i++) {
+
 	interp = self->interps[i];
 
-	printf("\n  ++ UPDATE TOPICS with \"%s\"...\n\n", 
-	       interp->conc->name);
+	/* TODO: verify non-nil interp->conc */
+	if (!interp->conc) continue;
 
-	ingr = mindmap->topic_index[interp->conc->id];
-	if (!ingr) continue;
+	/* update accu's conceptual index */
+	accu->update_conc_rating(accu, interp->conc);
 
-	printf("  ++ Supporting the following topics:\n");
+	if (DEBUG_COMPLEX_LEVEL_3) {
+	    printf("\n  ++ UPDATE TOPICS with \"%s\" "
+                   " (%s, mindmap num_conc: %d)... \n\n",
+		   interp->conc->name, interp->conc->id,
+		mindmap->num_concepts);
+	}
+
+	ingr = mindmap->topic_index[interp->conc->numid];
 
 	while (ingr) {
-	    printf(" *** %s\n", ingr->topic->name);
-	    accu->update_topic(accu, ingr, self);
+	    if (DEBUG_COMPLEX_LEVEL_3)
+		printf(" *** %p\n", ingr->topic);
+	    accu->update_topic(accu, ingr);
 	    ingr = ingr->next;
 	}
 
+	if (!interp->conc->domain) continue;
+
+	/*if (DEBUG_COMPLEX_LEVEL_3)
+	    printf("Supporting upper domain: %s\n", 
+	    interp->conc->domain->name);*/
+
+	ingr = mindmap->topic_index[interp->conc->domain->numid];
+	if (!ingr) continue;
+
+	while (ingr) {
+	    if (DEBUG_COMPLEX_LEVEL_3)
+		printf(" *** %s\n", ingr->topic->name);
+	    accu->update_topic(accu, ingr);
+	    ingr = ingr->next;
+	}
     }
 
-    /* subordinate specs */
+    /* check subordinate specs if needed */
     if (!self->num_interps) {
-	for (i = 0; i < NUM_OPERS; i++) {
+	for (i = 0; i < OO_NUM_OPERS; i++) {
 	    complex = self->specs[i];
 	    if (!complex) continue;
 	    ooComplex_topic_update(complex, accu);
 	}
     }
-
 
     return oo_OK;
 }
@@ -440,32 +589,31 @@ ooComplex_present(struct ooComplex *self,
 		  struct ooAccu *accu,
 		  output_type format)
 {
+    int ret;
 
     /* topic update */
  
-    ooComplex_topic_update(self, accu);
+    ret = ooComplex_topic_update(self, accu);
 
     /* save your structure to persistent memory */
     switch (format) {
     case FORMAT_JSON:
-	ooComplex_present_JSON_list(self, accu);
+	ret = ooComplex_present_JSON_list(self, accu);
 	break;
     case FORMAT_XML:
-	ooComplex_present_XML(self, accu, 0);
+	ret = ooComplex_present_XML(self, accu, 0);
 	break;
     default:
 	break;
     }
 
-    return oo_OK;
+    
+    return ret;
 }
 
 
 
 /***** THE END OF PRESENTATION LAYER ****/
-
-
-
 
 static int
 ooComplex_linear_merge(struct ooComplex *self,
@@ -607,7 +755,7 @@ ooComplex_check_logic_opers(struct ooComplex *self, struct ooComplex *aggr)
 
     complex->is_free = false;
     complex->is_updated = true;
-    complex->specs[AGGREGATES] = aggr;
+    complex->specs[OO_AGGREGATES] = aggr;
 
     /* make a copy of linear index */
     for (i = complex->linear_begin; i < complex->linear_end; i++) 
@@ -619,9 +767,9 @@ ooComplex_check_logic_opers(struct ooComplex *self, struct ooComplex *aggr)
 
     /* NB: 
      * our basic assumption is that
-     * logical opers are linearly located
+     * logical markers are linearly located
      * in-between two peers */    
-    endpos = aggr->specs[NEXT_IN_GROUP]->linear_begin;
+    endpos = aggr->specs[OO_NEXT]->linear_begin;
 
     if (self->linear_end < endpos) {
 	for (i = self->linear_end; i < endpos; i++) {
@@ -672,7 +820,7 @@ ooComplex_check_delimiters(struct ooComplex *aggr)
 static int
 ooComplex_forget(struct ooComplex *self,
 		 struct ooComplex *child,
-		 struct ooCodeAttr *attr)
+		 struct ooCodeSpec *spec)
 {
     int i, j, new_begin_pos, new_end_pos;
     bool is_dropped = false;
@@ -680,16 +828,16 @@ ooComplex_forget(struct ooComplex *self,
     if (DEBUG_COMPLEX_LEVEL_3) 
 	printf("    ?? Any previous references to %p? If so, forget them...\n", child); 
 
-    if (!self->specs[attr->operid]) return FAIL;
+    if (!self->specs[spec->operid]) return FAIL;
 
-    if (self->specs[attr->operid] != child) return FAIL;
+    if (self->specs[spec->operid] != child) return FAIL;
 
-    self->specs[attr->operid] = NULL;
+    self->specs[spec->operid] = NULL;
 
     if (DEBUG_COMPLEX_LEVEL_3) 
 	printf("   ++ Dropped child at operid %d ..." 
                "  Clearing up the linear index...\n", 
-	       attr->operid); 
+	       spec->operid); 
 
     /* remove all references from the linear index */
     for (i = self->linear_begin; i < self->linear_end; i++) {
@@ -726,14 +874,23 @@ ooComplex_forget(struct ooComplex *self,
 static int
 ooComplex_discriminate_usage(struct ooComplex *self,
 			     struct ooComplex *child_complex,
-			     oper_type operid,
+			     oo_oper_type operid,
 			     struct ooComplex *result)
 {
-    struct ooDeriv *deriv;
+    struct ooCodeDeriv *deriv;
     struct ooInterp *interp;
     int i;
 
+    if (DEBUG_COMPLEX_LEVEL_2) {
+	printf("  ... Evaluating conceptual bindings between "
+	       " \"%s\" and its child \"%s\"...\n", 
+	       self->base->code->name, 
+	       child_complex->base->code->name);
+    }
+
     /* child must know about all fixed bindings */
+    if (DEBUG_COMPLEX_LEVEL_2) 
+	printf("  ... Checking fixed bindings...\n");
 
     /* derivation check */
     deriv = child_complex->base->code->deriv_matches[operid];
@@ -741,22 +898,26 @@ ooComplex_discriminate_usage(struct ooComplex *self,
     while (deriv) {
 	deriv->str(deriv);
 
-	if (!strcmp(deriv->arg_code_name, self->base->code->name)) {
+	if (strcmp(deriv->arg_code_name, self->base->code->name)) 
+	    goto next_deriv;
 
-	    if (deriv->code)
-		result->base->code = deriv->code;
+	if (deriv->code)
+	    result->base->code = deriv->code;
 
-	    if (result->num_interps < INTERP_POOL_SIZE) {
-		interp = result->interps[result->num_interps];
-		if (!deriv->code_usage) continue;
-		if (!deriv->code_usage->conc) continue;
-		/* valid reference to specific usage */
-		interp->conc = deriv->code_usage->conc;
-		result->num_interps++;
-	    }
+	if (result->num_interps < INTERP_POOL_SIZE) {
+	    interp = result->interps[result->num_interps];
+	    if (!deriv->code_usage) continue;
+	    if (!deriv->code_usage->conc) continue;
+	    /* valid reference to specific usage */
+	    interp->conc = deriv->code_usage->conc;
+	    result->num_interps++;
 	}
+
+    next_deriv:
 	deriv = deriv->next;
     }
+
+
 
     return oo_OK;
 }
@@ -770,15 +931,16 @@ static int
 ooComplex_join(struct ooComplex *self,
 	       struct ooComplex *child_complex,
 	       struct ooComplex *aggr_complex,
-	       struct ooCodeAttr *attr)
-{   struct ooComplex *complex;
+	       struct ooCodeSpec *spec)
+{   
+    struct ooComplex *complex;
     struct ooConcUnit *result;
 
     char **operids = NULL, *opername = "???";
     size_t i;
     int ret;
 
-    oper_type operid = attr->operid;
+    oo_oper_type operid = spec->operid;
 
     if (DEBUG_COMPLEX_LEVEL_1) {
 	if (self->base->agenda) {
@@ -806,7 +968,7 @@ ooComplex_join(struct ooComplex *self,
 	return oo_FAIL;
     }
 
-/*    if (ooComplex_check_linear_order(self, child_complex, attr->linear_order)) {
+/*    if (ooComplex_check_linear_order(self, child_complex, spec->linear_order)) {
 	if (DEBUG_COMPLEX_LEVEL_3)
 	    printf("    -- Linear order conflict! :(((\n");
 	return FAIL;
@@ -817,11 +979,12 @@ ooComplex_join(struct ooComplex *self,
 
 
 
+
     /* resetting the aggregated complex */
     ret = aggr_complex->reset(aggr_complex);
 
     /* copying all the specs of the base */
-    for (i = 0; i < NUM_OPERS; i++)
+    for (i = 0; i < OO_NUM_OPERS; i++)
 	aggr_complex->specs[i] = self->specs[i];
 
     /* adopt a new child */
@@ -839,18 +1002,13 @@ ooComplex_join(struct ooComplex *self,
     aggr_complex->weight = self->weight + child_complex->weight;
 
     /* extra bonuses */
-    if (operid != NEXT_IN_GROUP)
+    if (operid != OO_NEXT)
 	aggr_complex->weight += OPER_SUCCESS_BONUS;
 
 
      /* TODO: evaluate the discourse propositions, establish conceptual paths */
-    /*if (DEBUG_COMPLEX_LEVEL_2) {*/
 
-    if (operid != NEXT_IN_GROUP) {
-	printf("  ... Evaluating conceptual bindings between "
-           " \"%s\" and its child \"%s\"...\n", 
-	   self->base->code->name, 
-	   child_complex->base->code->name);
+    if (operid != OO_NEXT) {
 	ret = ooComplex_discriminate_usage(self, child_complex, 
 					   operid, aggr_complex);
     }
@@ -867,12 +1025,12 @@ ooComplex_join(struct ooComplex *self,
     ret = ooComplex_check_delimiters(aggr_complex);
 
     /* peers need to check the logic opers */
-    if (operid == NEXT_IN_GROUP) 
+    if (operid == OO_NEXT) 
 	return ooComplex_check_logic_opers(self, aggr_complex);
 
 
     /* any upper units to be created? */
-    if (!attr->stackable) return oo_OK;
+    if (!spec->stackable) return oo_OK;
 
     /* create an aggregator */
     result = self->base->agenda->alloc_unit(self->base->agenda);
@@ -892,7 +1050,7 @@ ooComplex_join(struct ooComplex *self,
     complex->is_aggregate = true;
     complex->is_free = false;
     complex->is_updated = true;
-    complex->specs[AGGREGATES] = aggr_complex;
+    complex->specs[OO_AGGREGATES] = aggr_complex;
 
     
     for (i = complex->linear_begin; i < complex->linear_end; i++) 
@@ -932,9 +1090,10 @@ ooComplex_reset(struct ooComplex *self)
     self->begin_delim = NULL;
     self->end_delim = NULL;
 
-    for (i = 0; i < NUM_OPERS; i++)
+    for (i = 0; i < OO_NUM_OPERS; i++)
 	self->specs[i] = NULL;
 
+    /* context adaptation */
     self->adapt_context.affects_prepos = NULL;
     self->adapt_context.affects_postpos = NULL;
     self->adapt_context.affected_prepos = NULL;

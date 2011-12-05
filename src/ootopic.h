@@ -21,10 +21,6 @@
 #ifndef OO_TOPIC_H
 #define OO_TOPIC_H
 
-
-#include <libxml/parser.h>
-
-#include "ooconcept.h"
 #include "ooconfig.h"
 
 struct ooTopic;
@@ -34,7 +30,7 @@ struct ooMindMap;
  *  a set of concepts
  */
 typedef struct ooTopicIngredient {
-
+    size_t id;
     char *name;
     struct ooTopic *topic;
     struct ooConcept *conc;
@@ -63,7 +59,7 @@ typedef struct ooTopic {
     /***********  public methods ***********/
     int (*del)(struct ooTopic *self);
     int (*str)(struct ooTopic *self);
-    int (*read)(struct ooTopic *self, 
+    int (*read)(struct ooTopic *self,
 		xmlNode *input_node);
     int (*resolve_refs)(struct ooTopic *self,
 			struct ooMindMap *mindmap);
@@ -73,17 +69,19 @@ typedef struct ooTopic {
 /** 
  * Topic Solution
  */
-typedef struct ooTopicSolution {
+struct ooTopicSolution {
 
     struct ooTopic *topic;
-    
+
+    float ingredients[NUM_TOPIC_INGREDIENTS];
+
     float weight;
-    
+
     /***********  public methods ***********/
     int (*del)(struct ooTopicSolution *self);
     int (*str)(struct ooTopicSolution *self);
-
-} ooTopicSolution;
+    int (*present)(struct ooTopicSolution *self, char *buf);
+};
 
 
 extern int ooTopic_new(struct ooTopic **self);

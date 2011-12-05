@@ -241,7 +241,7 @@ ooAgenda_find_best_complex(struct ooAgenda *self,
 	    if (c->linear_begin == -1 || 
 		c->linear_end == -1) goto next_complex;
 
-	    if (c->linear_end >= linear_end) goto next_complex;
+	    if (c->linear_end > linear_end) goto next_complex;
 	
 	    if (!c->base->is_present) goto next_complex;
 
@@ -264,17 +264,11 @@ ooAgenda_find_best_complex(struct ooAgenda *self,
 	}
 
     }
-
     
-    if (best) {
-	printf("\n  NEXT best complex:\n");
-	best->str(best, 0);
-
+    if (best)
 	ooAgenda_present_linear_solution(self, 
 					 best,
 					 linear_begin, linear_end);
-    }
-
     return oo_OK;
 }
 
@@ -289,12 +283,13 @@ ooAgenda_present_linear_solution(struct ooAgenda *self,
     output_type format = self->accu->decoder->format;
     int ret, i;
 
-    if (!c) {
-	printf("start finding from %d to %d...\n",linear_begin, linear_end );
+    if (DEBUG_CONC_LEVEL_3)
+	printf("  Presenting solutions from %d to %d... global term start: %d\n", 
+	       linear_begin, linear_end, self->accu->decoder->term_count);
 
+    if (!c)
 	return ooAgenda_find_best_complex(self,
 					  linear_begin, linear_end);
-    }
 
     if (c->linear_begin > linear_begin)
 	ret = ooAgenda_find_best_complex(self,
@@ -303,11 +298,16 @@ ooAgenda_present_linear_solution(struct ooAgenda *self,
 
     /* TODO: check the linearly nested isolated complexes */
 
-    c->present(c, self->accu, format);
+    /* check the stoplist concepts */
+    if (c->base->code->type != CODE_RELATION_MARKER) {
+	ret = c->present(c, self->accu, format);
+	if (ret != oo_OK) return ret;
+    }
 
-    if (c->linear_end < linear_end)
+    if (c->linear_end < linear_end) 
 	ret = ooAgenda_find_best_complex(self, 
 					 c->linear_end, linear_end);
+
     return oo_OK;
 }
 
@@ -320,7 +320,6 @@ ooAgenda_build_linear_index(struct ooAgenda *self)
     struct ooComplex *complex, *c, *neighbour = NULL, *best_neighbour = NULL;
     int weight = 0, linear_end = -1;
     size_t i, j;
-
 
     for (i = 0; i < self->storage_space_used; i++) {
 	cu = &self->storage[i];
@@ -352,11 +351,12 @@ ooAgenda_build_linear_index(struct ooAgenda *self)
 		weight = complex->weight;
 	    }
 
+	    if (complex->linear_end > self->linear_index_size)
+		self->linear_index_size = complex->linear_end;
+
 	    complex->next = self->linear_index[complex->linear_begin];
 	    self->linear_index[complex->linear_begin] = complex;
 	}
-
-	/*cu = cu->next_alloc;*/
 
     }
 
@@ -470,10 +470,11 @@ ooAgenda_register_unit(struct ooAgenda *self,
     }
 
 
-
     concid = cu->code->id;
     if (cu->code->baseclass)
 	concid = cu->code->baseclass->id;
+
+    if (concid >= AGENDA_INDEX_SIZE) return oo_FAIL;
 
     if (!self->index[concid]) {
 	self->index[concid] = cu;
@@ -494,7 +495,7 @@ ooAgenda_register_unit(struct ooAgenda *self,
 
 
 static struct ooConcUnit*
-ooAgenda_add_code_complex(struct ooAgenda *self,
+ooAgenda_add_shared_code(struct ooAgenda *self,
 			  struct ooCodeUnit *code_unit,
 			  struct ooConcUnit *terminal,
 			  struct ooConcUnit *common_unit)
@@ -506,10 +507,10 @@ ooAgenda_add_code_complex(struct ooAgenda *self,
     int ret;
 
     if (DEBUG_AGENDA_LEVEL_4)
-	printf(" .. Adding complex code..\n");
+	printf(" .. Adding shared code..\n");
 
     cu = self->alloc_unit(self);
-    if (cu == NULL) return NULL;
+    if (!cu) return NULL;
 
     cu->make_instance(cu, code_unit->code, terminal);
     cu->is_present = true;
@@ -527,7 +528,7 @@ ooAgenda_add_code_complex(struct ooAgenda *self,
     if (!code_unit->num_specs) goto agenda_register;
 
     child_code_unit = code_unit->specs[0]->unit;
-    child = ooAgenda_add_code_complex(self, child_code_unit, terminal, common_unit);
+    child = ooAgenda_add_shared_code(self, child_code_unit, terminal, common_unit);
     if (!child) goto agenda_register;
 
     operid = code_unit->specs[0]->operid;
@@ -536,7 +537,7 @@ ooAgenda_add_code_complex(struct ooAgenda *self,
     child->fixed_operid = operid;
 
     if (DEBUG_AGENDA_LEVEL_4) {
-	printf("\n   ++ CHILD of \"%s\" IN A COMPLEX CODE:\n", 
+	printf("\n   ++ CHILD of \"%s\" IN A SHARED CODE:\n", 
 	       code_unit->code->name);
 	child->str(child, 1);
     }
@@ -603,7 +604,8 @@ ooAgenda_explore_code_denots(struct ooAgenda *self,
 
     if (DEBUG_AGENDA_LEVEL_3) {
 	for (i = 0; i < cu->code->num_denots; i++) {
-	    printf("  [%s]", cu->code->denot_names[i]);
+	    printf("  [%s] %p ", 
+		   cu->code->denot_names[i], cu->code->denots[i]);
 	    gotcha = true;
 	}
 	printf("\n");
@@ -624,10 +626,11 @@ ooAgenda_explore_code_denots(struct ooAgenda *self,
 	    denot->str(denot);
 	}
 
-	if (denot->complex) {
-	    ret = ooAgenda_add_code_complex(self, denot->complex, cu, NULL);
+	if (denot->shared) {
+	    ret = ooAgenda_add_shared_code(self, denot->shared, cu, NULL);
 	    continue;
 	}
+
 
 	/* single concept unit */
 	denot_cu = self->alloc_unit(self);
@@ -639,10 +642,7 @@ ooAgenda_explore_code_denots(struct ooAgenda *self,
 	/* find syntactic solutions */
 	ret = denot_cu->link(denot_cu);
 
-	
 	ret = ooAgenda_register_unit(self, denot_cu, denot_cu->code);
-
-
     }
 
     return oo_OK;
@@ -651,9 +651,9 @@ ooAgenda_explore_code_denots(struct ooAgenda *self,
 
 static int
 ooAgenda_denotational_update(struct ooAgenda *self,
-		struct ooAgenda *segm_agenda)
+			     struct ooAgenda *segm_agenda)
 {
-    size_t i, start_term_pos = 0;
+    size_t i;
     struct ooConcUnit *src_cu, *dest_cu = NULL;
     const char *code_name = "None", *denot_name = "None";
     struct ooCode *code = NULL;
@@ -671,14 +671,16 @@ ooAgenda_denotational_update(struct ooAgenda *self,
 
 	dest_cu->cs_id = cs->id;
 	dest_cu->terminals = src_cu;
-	dest_cu->num_terminals = 1;
 	dest_cu->is_present = true;
-	dest_cu->linear_pos = src_cu->linear_pos;
-	dest_cu->start_term_pos = start_term_pos;
-	dest_cu->coverage = src_cu->coverage;
-	dest_cu->next = NULL;
 
-	start_term_pos++;
+	/* atomic position */
+	dest_cu->linear_pos = src_cu->linear_pos;
+	dest_cu->coverage = src_cu->coverage;
+
+	/* symbolic position */
+	dest_cu->start_term_pos = src_cu->start_term_pos;
+	dest_cu->num_terminals = src_cu->num_terminals;
+	dest_cu->next = NULL;
 
 	if (cs->use_numeric_codes) {
 	    dest_cu->concid = (size_t)cs->numeric_denotmap[src_cu->concid];
@@ -693,7 +695,7 @@ ooAgenda_denotational_update(struct ooAgenda *self,
 	    }
 	}
 
-	if (DEBUG_LEVEL_3) {
+	if (DEBUG_AGENDA_LEVEL_3) {
 	    if (code) {
 		denot_name = code->name;
 	    } else {
@@ -707,7 +709,6 @@ ooAgenda_denotational_update(struct ooAgenda *self,
 
         /* update agenda */
 	self->index[i] = dest_cu;
-	/*self->agenda->coverage += dest_cu->coverage;*/
 	self->last_idx_pos = i + dest_cu->coverage;
     }
 
@@ -751,6 +752,9 @@ ooAgenda_complex_update(struct ooAgenda *self,
 		       (unsigned long)cu->coverage);
 
 	    ret = ooAgenda_explore_code_denots(self, cu);
+
+	    break;
+
 	next_cu:
 	    cu = cu->next;
 	}
@@ -777,14 +781,11 @@ ooAgenda_complex_update(struct ooAgenda *self,
     ret = ooAgenda_build_linear_index(self);
 
    
-    if (self->best_complex && self->accu->decoder->is_root) {
-	printf("\n\n Start writing solution from pos %d\n", 
-	       self->best_complex->linear_begin);
+    if (self->best_complex && self->accu->decoder->is_root)
 	ret = ooAgenda_present_linear_solution(self, 
 					       self->best_complex,
 					       0, 
 					       segm_agenda->last_idx_pos + 1);
-    }
 
     if (self->best_complex)
 	self->accu->solution = (const char*)self->accu->output_buf;
@@ -839,7 +840,6 @@ ooAgenda_reset(struct ooAgenda *self)
 	self->delimiter_index[i] = NULL;
 	self->logic_oper_index[i] = NULL;
     }
-
     
     /* initialize storage units */
     /*while (self->alloc_head) {
@@ -852,7 +852,10 @@ ooAgenda_reset(struct ooAgenda *self)
     self->linear_last = NULL;
     self->storage_space_used = 0;
     self->last_idx_pos = 0;
+    self->linear_index_size = 0;
+
     self->num_complexes = 0;
+    self->has_garbage = false;
 
     return oo_OK;
 }
@@ -911,15 +914,17 @@ ooAgenda_new(struct ooAgenda **agenda)
 	self->tail_index[i] = NULL;
     }
     self->last_idx_pos = 0;
+    self->linear_index_size = 0;
 
     /* initialize linear index */
-    for (i = 0; i < INPUT_BUF_SIZE; i++) {
+    for (i = 0; i < INPUT_BUF_SIZE; i++)
 	self->linear_index[i] = NULL;
-    }
+
     self->best_complex = NULL;
 
     self->linear_structure = false;
     self->linear_last = NULL;
+    self->has_garbage = false;
 
     /* bind your methods */
     self->del = ooAgenda_del;
@@ -931,6 +936,7 @@ ooAgenda_new(struct ooAgenda **agenda)
     self->present_solution = ooAgenda_present_linear_solution;
 
     *agenda = self;
+
     return oo_OK;
 }
 

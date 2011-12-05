@@ -26,10 +26,12 @@
 #include <sys/types.h>
 #include <db.h>
 
-#include "ooconcept.h"
-#include "oocodesystem.h"
-#include "ootopic.h"
-#include "oodict.h"
+
+
+struct ooCodeSystem;
+struct ooConcept;
+struct ooDomain;
+struct ooDict;
 
 /*  the Mind Map Controller */
 typedef struct ooMindMap 
@@ -49,8 +51,12 @@ typedef struct ooMindMap
     int num_codesystems;
 
     struct ooConcept **concept_index;
-    size_t concept_index_size;     /* current capacity */
-    mindmap_size_t num_concepts; 
+    size_t concept_index_size;       /* current capacity */
+    size_t num_concepts; 
+
+    struct ooDomain *root_domain;
+    struct ooDomain **domains;
+    size_t num_domains;
 
     struct ooTopic **topics;
     size_t num_topics;
@@ -90,6 +96,9 @@ typedef struct ooMindMap
     /* save new concept in MindMap DB */
     int (*put)(struct ooMindMap*, struct ooConcept*);
 
+    /* save new concept in memory */
+    int (*add_concept)(struct ooMindMap*, struct ooConcept*);
+
     /* remove a concept by id */
     int (*drop)(struct ooMindMap *self, mindmap_size_t);
 
@@ -100,7 +109,9 @@ typedef struct ooMindMap
 		  mindmap_size_t   batch_start);
 
     /* load concepts from file */
-    int (*import_file)(struct ooMindMap *self, const char *filename);
+    int (*import_file)(struct ooMindMap *self, 
+		       const char *filename,
+		       struct ooDomain *parent_domain);
 
     /* save the complete MindMap DB into a file */
     int (*export_file)(struct ooMindMap *self, const char *filename);

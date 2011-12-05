@@ -33,12 +33,14 @@
 #include "oocache.h"
 #include "oodecoder.h"
 
-static const char *ooCodeSystem_operids[] =\
+static const char *ooCodeSystem_operids[] =			\
 { "NONE", "IS_SUBCLASS", "AGGREGATES", "HAS_ATTR", "TAKES_ARG", 
   "DENOTES", "RUNS", "PRECEEDS", "NEXT_IN_GROUP",
   "START_REVERSE_OPERS",
   "SUBCLASSED_BY", "CONSTITUTES", "IS_ATTR_OF", "IS_ARG", 
   "DENOTED_BY", "IS_RUN", "FOLLOWS", "PREV_IN_GROUP", NULL };
+
+
 
 /* forward declarations */
 static int
@@ -57,8 +59,10 @@ int ooCodeSystem_del(struct ooCodeSystem *self)
     for (i = 0; i < self->num_providers; i++)
 	if (self->provider_names[i])
 	    free(self->provider_names[i]);
+
     if (self->provider_names)
 	free(self->provider_names);
+
     if (self->providers)
 	free(self->providers);
 
@@ -104,10 +108,9 @@ int ooCodeSystem_del(struct ooCodeSystem *self)
     if (self->code_names) free(self->code_names);
     if (self->code_index) free(self->code_index);
 
-    if (self->codes) {
+    if (self->codes)
 	self->codes->del(self->codes);
-	free(self->codes);
-    }
+
     if (self->root_elem_name) free(self->root_elem_name);
 
     /* say bye to your unique beautiful name :(( */
@@ -132,7 +135,8 @@ ooCodeSystem_resolve_refs(struct ooCodeSystem *self)
     struct ooCode *code;
 
     if (DEBUG_CS_LEVEL_2)
-	printf("  Setting inner cross-references...\n"); 
+      printf("  Setting inner cross-references of CS \"%s\"...\n",
+	     self->name); 
 
     for (i = 1; i < self->num_codes; i++) {
 	code = self->code_index[i];
@@ -494,6 +498,7 @@ ooCodeSystem_add_new_code(struct ooCodeSystem *self,
     char *value;
     size_t nameset_size;
     char **names;
+    int verif_level = 0;
     int ret;
 
     value = (char*)xmlGetProp(cur_node,  (const xmlChar *)"name");
@@ -507,7 +512,8 @@ ooCodeSystem_add_new_code(struct ooCodeSystem *self,
     /* check for doublets */
     code = (struct ooCode*)self->codes->get(self->codes, value);
     if (code) {
-	fprintf(stderr, "  -- Ignoring the doublet of \"%s\"...\n", value);
+	if (DEBUG_CS_LEVEL_1)
+	    fprintf(stderr, "  -- Ignoring the doublet of \"%s\"...\n", value);
 	xmlFree(value);
 	return oo_FAIL;
     }
@@ -538,19 +544,21 @@ ooCodeSystem_add_new_code(struct ooCodeSystem *self,
 	    code->type = CODE_GROUP_MARKER;
 	if (!strcmp(value,"Alternation Marker")) 
 	    code->type = CODE_ALTERN_MARKER;
-	if (!strcmp(value,"Static Non-Terminal"))
-	    code->type = CODE_STATIC_NON_TERMINAL;
-	if (!strcmp(value,"Dynamic Non-Terminal"))
-	    code->type = CODE_STATIC_NON_TERMINAL;
-	if (!strcmp(value,"Prefix Non-Terminal"))
-	    code->type = CODE_PREFIX_NON_TERMINAL;
-	if (!strcmp(value,"Contact Term Separator"))
-	    code->type = CODE_CONTACT_TERM_SEPARATOR;
+	if (!strcmp(value,"Relation Marker")) 
+	    code->type = CODE_RELATION_MARKER;
 	if (DEBUG_CS_LEVEL_4) 
 	    printf("Code %s has type %d\n", code->name, code->type);
 	xmlFree(value);
     }
 
+    value = (char*)xmlGetProp(cur_node,  (const xmlChar *)"verif_level");
+    if (value) {
+	verif_level = atoi(value);
+	if (verif_level > 0)
+	    code->verif_level = verif_level;
+	xmlFree(value);
+    }
+    
     /* allows peer grouping? 
        (true by default) */
     value = (char*)xmlGetProp(cur_node,  (const xmlChar *)"grouping");
@@ -639,9 +647,11 @@ ooCodeSystem_add_new_code(struct ooCodeSystem *self,
 static int
 ooCodeSystem_read_codeset_include(struct ooCodeSystem *self, 
 				  xmlNode *input_node,
+				  const char *parent_filename,
 				  bool need_parsing)
 {
-    const char *path, *value;
+    const char *path;
+    char *value;
     char *filename;
 
     xmlDocPtr doc;
@@ -656,8 +666,9 @@ ooCodeSystem_read_codeset_include(struct ooCodeSystem *self,
 
     filename_size = strlen(value);
 
-    /* extract the path to directory */
-    for (path = self->filename; *path; path++) {
+    /* extract the path from the parent filename */
+
+    for (path = parent_filename; *path; path++) {
 	if ('\\' == *path || '/' == *path) {
 	    path_size += chunk_size + 1;
 	    chunk_size = 0;
@@ -672,21 +683,19 @@ ooCodeSystem_read_codeset_include(struct ooCodeSystem *self,
 	return oo_NOMEM;
     }
 
-    strncpy(filename, self->filename, path_size);
+    /* concatenate the parent path 
+     * and the current filename */
+    strncpy(filename, parent_filename, path_size);
     strcpy(filename + path_size, value);
     filename[path_size + filename_size] ='\0';
     xmlFree(value);
-
-    if (DEBUG_CS_LEVEL_1)
-	printf("   ... Trying to read the codeset include file \"%s\"\n\n", 
-	       filename);
 
     doc = xmlParseFile(filename);
     if (!doc) {
 	fprintf(stderr,"  -- Document \"%s\" not parsed successfully :( \n",
 	    filename);
 	errcode = -1;
-	goto error;
+	goto final;
     }
 
     root = xmlDocGetRootElement(doc);
@@ -694,7 +703,7 @@ ooCodeSystem_read_codeset_include(struct ooCodeSystem *self,
 	fprintf(stderr,"  -- Empty document: \"%s\"\n", filename);
 	xmlFreeDoc(doc);
 	errcode = -2;
-	goto error;
+	goto final;
     }
 
     if (xmlStrcmp(root->name, (const xmlChar *) "codeset")) {
@@ -702,13 +711,23 @@ ooCodeSystem_read_codeset_include(struct ooCodeSystem *self,
 		" the root node is not \"codeset\"",
 		filename);
 	errcode = -3;
-	goto error;
+	goto final;
     }
 
-    fprintf(stderr,"  ... include: \"%s\"\n", filename);
+    if (DEBUG_CS_LEVEL_2)
+	fprintf(stderr,"  ... codeset include: \"%s\"\n", filename);
 
     for (cur_node = root->children; cur_node; cur_node = cur_node->next) {
         if (cur_node->type != XML_ELEMENT_NODE) continue;
+
+	/* read the include file */
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"include"))) {
+	    ret = ooCodeSystem_read_codeset_include(self,
+						    cur_node, 
+						    filename,
+						    need_parsing);
+	    continue;
+	}
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"code"))) {
 	    if (!need_parsing) { 
@@ -722,32 +741,37 @@ ooCodeSystem_read_codeset_include(struct ooCodeSystem *self,
 
     errcode = oo_OK;
 
- error: 
+final: 
     xmlFreeDoc(doc);
     xmlCleanupParser();
-
     free(filename);
+
     return errcode;
 }
 
 
 static int
-ooCodeSystem_read_codeset(struct ooCodeSystem *self, xmlNode *input_node)
+ooCodeSystem_read_codeset(struct ooCodeSystem *self, 
+			  xmlNode *input_node)
 {
     xmlNode *cur_node = NULL;
     char *value, *name;
     size_t code_value, denot_id;
     int ret;
 
-    if (DEBUG_CS_LEVEL_3) 
-	printf("  Reading Codes in Codeset %s...\n", self->name);
+    if (DEBUG_CS_LEVEL_1)
+	printf("  Reading Codes in Codeset \"%s\"... (%s)\n", 
+	       self->name, self->filename);
+
 
     /* calculate the expected total number of codes in CS */
     for (cur_node = input_node; cur_node; cur_node = cur_node->next) {
 	if (cur_node->type != XML_ELEMENT_NODE) continue;
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"include"))) {
-	    ret = ooCodeSystem_read_codeset_include(self, cur_node, 0);
+	    ret = ooCodeSystem_read_codeset_include(self,
+						    cur_node, 
+						    self->filename, false);
 	    continue;
 	}
 
@@ -759,7 +783,8 @@ ooCodeSystem_read_codeset(struct ooCodeSystem *self, xmlNode *input_node)
     fprintf(stderr,"  == Total number of codes to read: %d\n\n",
 	self->code_index_capacity);
     
-    self->code_index = malloc(sizeof(struct ooCode*) * (self->code_index_capacity + 1));
+    self->code_index = malloc(sizeof(struct ooCode*) * 
+			      (self->code_index_capacity + 1));
     if (!self->code_index) return oo_NOMEM;
 
     /* 0 slot has a special meaning of an unrecognized value */
@@ -775,7 +800,9 @@ ooCodeSystem_read_codeset(struct ooCodeSystem *self, xmlNode *input_node)
 
 	/* read the include file */
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"include"))) {
-	    ret = ooCodeSystem_read_codeset_include(self, cur_node, 1);
+	    ret = ooCodeSystem_read_codeset_include(self,
+						    cur_node, 
+						    self->filename, true);
 	    continue;
 	}
 
@@ -864,7 +891,7 @@ ooCodeSystem_read_constraint_types(struct ooCodeSystem *self,
 	    if (!constraints) {
 		xmlFree(value);
 		errcode = oo_NOMEM;
-		goto error;
+		goto final;
 	    }
 
 	    ct = malloc(sizeof(struct ooConstraintType));
@@ -872,7 +899,7 @@ ooCodeSystem_read_constraint_types(struct ooCodeSystem *self,
 		free(constraints);
 		xmlFree(value);
 		errcode = oo_NOMEM;
-		goto error;
+		goto final;
 	    }
 
 	    ct->name = malloc(strlen(value) + 1);
@@ -881,7 +908,7 @@ ooCodeSystem_read_constraint_types(struct ooCodeSystem *self,
 		free(constraints);
 		xmlFree(value);
 		errcode = oo_NOMEM;
-		goto error;
+		goto final;
 	    }
 	    strcpy(ct->name, value);
 	    xmlFree(value);
@@ -900,7 +927,9 @@ ooCodeSystem_read_constraint_types(struct ooCodeSystem *self,
 
     errcode = oo_OK;
 
-error:
+final:
+
+
     return errcode;
 }
 
@@ -1046,12 +1075,14 @@ int ooCodeSystem_new(struct ooCodeSystem **cs)
 
     self->allows_polysemy = false;
 
-    self->operids = ooCodeSystem_operids;
+    self->operids = oo_oper_type_names;
 
     self->root_elem_name = NULL;
     self->root_elem_id = 0;
 
     self->use_visual_separators = true;
+
+    self->filename = NULL;
 
     self->provider_names = NULL;
     self->providers = NULL;

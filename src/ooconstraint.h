@@ -27,7 +27,7 @@
 #include "ooconfig.h"
 
 /*typedef enum logic_opers { LOGIC_AND, LOGIC_OR } logic_opers;*/
-typedef enum adaptation_roles { AFFECTS, AFFECTED } adaptation_roles;
+typedef enum adaptation_roles { OO_AFFECTS, OO_AFFECTED } adaptation_roles;
 
 typedef struct ooConstraint {
     int constraint_type;
@@ -64,5 +64,5 @@ typedef struct ooConstraintGroup
 
 } ooConstraintGroup;
 
-extern int ooConstraintGroup_init(struct ooConstraintGroup **self); 
+extern int ooConstraintGroup_new(struct ooConstraintGroup **self); 
 #endif

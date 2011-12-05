@@ -109,12 +109,15 @@ ooSegmentizer_UTF8_parser(struct ooSegmentizer *self)
 	    num_bytes--;
 
 	    cu = agenda->alloc_unit(agenda);
-	    if (cu == NULL) goto error;
+	    if (!cu) goto error;
 
             cu->concid = (mindmap_size_t)num_value;
 
 	    cu->linear_pos = linear_pos;
 	    cu->coverage = 1;
+	    cu->start_term_pos = self->num_terminals;
+	    cu->num_terminals = 1;
+
 	    agenda->index[linear_pos] = cu;
 	    linear_pos++;
 	    self->num_terminals++;
@@ -150,8 +153,10 @@ ooSegmentizer_UTF8_parser(struct ooSegmentizer *self)
 
 	    cu->linear_pos = linear_pos;
 	    cu->coverage = 2;
-	    agenda->index[linear_pos] = cu;
+	    cu->start_term_pos = self->num_terminals;
+	    cu->num_terminals = 1;
 
+	    agenda->index[linear_pos] = cu;
 	    linear_pos += 2;
 	    self->num_terminals++;
 	    continue;
@@ -181,6 +186,7 @@ ooSegmentizer_UTF8_parser(struct ooSegmentizer *self)
 	    num_value = ((input[0] & 0x0F) << 12)  | 
                         ((input[1] & 0x3F) << 6) | 
                          (input[2] & 0x3F);
+
 	    if (DEBUG_SEGM_LEVEL_3) 
 		printf("    == UTF-8 3-byte code: %zu\n", 
 		       num_value);
@@ -189,6 +195,9 @@ ooSegmentizer_UTF8_parser(struct ooSegmentizer *self)
 	    cu = agenda->alloc_unit(agenda);
 	    cu->linear_pos = linear_pos;
 	    cu->coverage = 3;
+	    cu->start_term_pos = self->num_terminals;
+	    cu->num_terminals = 1;
+	      
 	    cu->concid = (mindmap_size_t)num_value;
 	    /* cu->name = "UTF-8 Code";*/
 	    agenda->index[linear_pos] = cu;
@@ -208,6 +217,7 @@ ooSegmentizer_UTF8_parser(struct ooSegmentizer *self)
     return oo_OK;
 
  error:
+    agenda->last_idx_pos = linear_pos;
     self->num_parsed_atoms = linear_pos;
     return FAIL;
 }
@@ -312,7 +322,7 @@ static int
 ooSegmentizer_add_units(struct ooSegmentizer *self, 
 			struct ooDecoder     *dec)
 {
-    int last_pos, i;
+    int last_pos = 0, i;
     struct ooAgenda *agenda = self->agenda, *input_agenda;
     struct ooConcUnit *cu, *tail_cu;
     struct ooCodeSystem *parent_cs;
@@ -346,11 +356,10 @@ ooSegmentizer_add_units(struct ooSegmentizer *self,
 
 	    /* NB: complexes from different CS are lost here! */
 	    agenda->linear_index[i] = complex;
-	    last_pos = complex->linear_end;
 	}
 
-	if (last_pos > agenda->last_idx_pos) 
-	    agenda->last_idx_pos = last_pos;
+	if (input_agenda->linear_index_size > agenda->last_idx_pos) 
+	    agenda->last_idx_pos = input_agenda->linear_index_size;
 
 	return oo_OK;
     }
@@ -400,8 +409,11 @@ ooSegmentizer_call_subordinate_decoder(struct ooSegmentizer *self,
 
     /* main decoding job */
     ret = dec->decode(dec);
-    self->num_parsed_atoms = dec->num_parsed_atoms;
-    self->num_terminals = dec->num_terminals;
+
+    if (dec->num_parsed_atoms) {
+	self->num_parsed_atoms = dec->num_parsed_atoms;
+	self->num_terminals = dec->num_terminals;
+    }
 
     if (DEBUG_SEGM_LEVEL_3)
 	printf("\n  ** Subdecoder \"%s\" done: %d\n",
@@ -474,7 +486,8 @@ ooSegmentizer_segmentize(struct ooSegmentizer *self)
     if (DEBUG_SEGM_LEVEL_3)
 	printf("\n FINAL: ******* Segmentizer has merged all interpretations.\n");
 
-    /*self->agenda->str(self->agenda);*/
+    /*if (dec->codesystem->type == CS_OPERATIONAL)
+      self->agenda->str(self->agenda);*/
 
     return oo_OK;
 }

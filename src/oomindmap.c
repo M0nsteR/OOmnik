@@ -26,15 +26,36 @@
 #include <db.h>
 #include <libxml/parser.h>
 
-#include "ooconfig.h"
-#include "ooconcept.h"
+#include "oocodesystem.h"
 #include "oomindmap.h"
+#include "ootopic.h"
+#include "ooconcept.h"
+#include "oodomain.h"
+#include "ooutils.h"
+#include "oodict.h"
+
+#include "ooconfig.h"
+
+/* forward */
+static int 
+ooMindMap_import(struct ooMindMap *self, 
+		 const char *filename, 
+		 struct ooDomain *parent_domain);
+
+static int 
+ooMindMap_read_domain(struct ooMindMap *self, 
+		      xmlNode *input_node, 
+		      const char *path,
+		      size_t path_size,
+		      struct ooDomain *parent);
+
 
 
 /*  MindMap Destructor */
 static int
 ooMindMap_del(struct ooMindMap *self)
 {
+    struct ooConcept *c;
     int i, ret;
 
     if (self->_storage)
@@ -48,18 +69,33 @@ ooMindMap_del(struct ooMindMap *self)
     if (self->codesystems)
 	free(self->codesystems);
 
-    if (self->concept_index)
+    if (self->concept_index) {
+	for (i = 0; i < self->num_concepts; i++) {
+	    c = self->concept_index[i];
+	    if (!c) continue;
+	    c->del(c);
+	}
 	free(self->concept_index);
-
-    if (self->_name_index) {
-	self->_name_index->del(self->_name_index);
-	free(self->_name_index);
     }
 
-    for (i = 0; i < self->num_topics; i++)
-	if (self->topics[i]) self->topics[i]->del(self->topics[i]);
+    if (self->_name_index)
+	self->_name_index->del(self->_name_index);
 
-    free(self->topics);
+    /* domains */
+    if (self->num_domains) {
+	for (i = 0; i < self->num_domains; i++)
+	    if (self->domains[i]) self->domains[i]->del(self->domains[i]);
+	free(self->domains);
+    }
+
+
+    /* topics */
+    free(self->topic_index);
+    if (self->topics) {
+	for (i = 0; i < self->num_topics; i++)
+	    if (self->topics[i]) self->topics[i]->del(self->topics[i]);
+	free(self->topics);
+    }
 
     free(self);
 
@@ -71,6 +107,7 @@ static const char*
 ooMindMap_str(struct ooMindMap *self)
 {
     struct ooTopicIngredient *ingr;
+    struct ooDomain *domain;
     int i;
 
     printf("\n\n MindMap  num_concepts: %d\n", 
@@ -82,6 +119,13 @@ ooMindMap_str(struct ooMindMap *self)
 	printf("%d) ingredient: %p\n", i, ingr);
     }
     
+    for (i = 0; i < self->num_domains; i++) {
+	domain = self->domains[i];
+	if (!domain) continue;
+	domain->str(domain);
+    }
+    
+
 
     return NULL;
 }
@@ -196,8 +240,8 @@ ooMindMap_get(struct ooMindMap *self, mindmap_size_t id)
     memset(&key, 0, sizeof(DBT));
     memset(&data, 0, sizeof(DBT));
 
-    key_buffer = (char*)malloc(idsize);
-    if (!key_buffer) return oo_NOMEM;
+    key_buffer = malloc(idsize);
+    if (!key_buffer) return NULL;
 
     memcpy(key_buffer, &id, idsize);
 
@@ -214,16 +258,16 @@ ooMindMap_get(struct ooMindMap *self, mindmap_size_t id)
     }
 
     /* create concept */
-    ret = ooConcept_init(&conc);
+    ret = ooConcept_new(&conc);
     if (ret != oo_OK) return NULL;
 
-    conc->id = id;
+    conc->numid = id;
     conc->bytecode = (char*)data.data;
     conc->bytecode_size = (size_t)data.size;
     conc->unpack(conc);
 
     /* update the cache */
-    ret = self->concept_index[id] = conc;
+    self->concept_index[id] = conc;
 
     free(key_buffer);
 
@@ -232,13 +276,12 @@ ooMindMap_get(struct ooMindMap *self, mindmap_size_t id)
 
 static int
 ooMindMap_keys(struct ooMindMap *self,
-		    mindmap_size_t **ids,
-		    mindmap_size_t   batch_size,
-		    mindmap_size_t   batch_start)
+	       mindmap_size_t  **ids,
+	       mindmap_size_t    batch_size,
+	       mindmap_size_t    batch_start)
 {   DBT key, data;
     DB *dbp;
     DBC *dbcp;
-    size_t len;
     int ret;
 
     dbp = self->_storage;
@@ -298,26 +341,69 @@ ooMindMap_get_codesystem(struct ooMindMap *self,
     return (struct ooCodeSystem*)self->_name_index->get(self->_name_index, 
                                                       cs_uri);
 }
-/*  add a new concept */
-static int
-ooMindMap_add_concept(struct ooMindMap *self, 
-		      xmlNode *input_node,
-		      const char *filename)
-{  
-    struct ooConcept *c;
-    struct ooConcept **index;
-    int i, ret;
 
-    ret = ooConcept_init(&c);
+/*  read XML source and create a new concept */
+static int
+ooMindMap_read_concept(struct ooMindMap *self, 
+		      xmlNode *input_node,
+		      struct ooDomain *domain)
+{
+    struct ooConcept *c;
+    int ret;
+
+    ret = ooConcept_new(&c);
     if (ret != oo_OK) return ret;
 
-    c->read(c, input_node);
+    ret = c->read(c, input_node, self, domain);
+    if (ret != oo_OK) {
+	c->del(c);
+	return ret;
+    }
 
+    return oo_OK;
+}
+
+static int
+ooMindMap_add_concept(struct ooMindMap *self, 
+		      struct ooConcept *c)
+{
+    struct ooConcept **index;
+    struct ooConcept **concepts;
+    size_t concepts_size;
+    char concid[MAX_CONC_ID_SIZE];
+    size_t offset = 0;
+
+    int i, ret;
+
+    if (!self->_name_index) return oo_FAIL;
 
     /* inform the name index */
-    if (self->_name_index) 
+
+    /* prepare the unique name:
+     * concept name + domain id 
+     */
+    if (c->name_size < MAX_CONC_ID_SIZE) {
+	offset += c->name_size;
+	strncpy(concid,
+		(const char*)c->name, c->name_size);
+    }
+    if (offset + 1 < MAX_CONC_ID_SIZE) {
+	strncpy(concid + offset, ":", 1);
+	offset++;
+    }
+    if (offset + c->id_size < MAX_CONC_ID_SIZE) {
+	strncpy(concid + offset, 
+		(const char*)c->id, c->id_size);
+	offset += c->id_size;
+    }
+    concid[offset] = '\0';
+
+    /*printf("CONC ID: %s (%d)\n", concid, offset);*/
+ 
+    if (offset) {
 	ret = self->_name_index->set(self->_name_index, 
-				     c->name, c);
+				     (const char*)concid, (void*)c);
+    }
 
     /* update the index */
     if ((self->num_concepts + 1) > self->concept_index_size) {
@@ -326,6 +412,7 @@ ooMindMap_add_concept(struct ooMindMap *self,
 			self->concept_index_size * 
 			INDEX_REALLOC_FACTOR);
 	if (!index) return oo_NOMEM;
+	
 	self->concept_index = index;
 	self->concept_index_size = self->concept_index_size * 
 	    INDEX_REALLOC_FACTOR;
@@ -335,35 +422,39 @@ ooMindMap_add_concept(struct ooMindMap *self,
 
     }
 
-    c->id = self->num_concepts;
-    self->concept_index[self->num_concepts++] = c;
+    c->numid = self->num_concepts;
+    self->concept_index[self->num_concepts] = c;
+    self->num_concepts++;
+
     return oo_OK;
 }
 
-
 static int
-ooMindMap_add_codesystem(struct ooMindMap *self, 
+ooMindMap_read_codesystem(struct ooMindMap *self, 
 			 xmlNode *xmlcur,
-			 const char *filename)
+			  const char *path,
+			  size_t path_size)
 {
+    struct ooCodeSystem **csp;
     size_t cs_size;
-    struct ooCodeSystem ** csp;
-    int ret = oo_FAIL;
-
     struct ooCodeSystem *cs = NULL;
+    int ret;
+
     ret = ooCodeSystem_new(&cs);
     if (ret != oo_OK) return oo_FAIL;
 
     cs->mindmap = self;
-    cs->filename = filename;
+    cs->filename = path;
 
-    if (cs->read(cs, xmlcur) != oo_OK) {
+    ret = cs->read(cs, xmlcur);
+    if (ret != oo_OK) {
 	fprintf(stderr,
 		"Failed to initialize the CodeSystem :(\n");
-	return oo_FAIL;
+	return ret;
     }
 
-    cs_size = (self->num_codesystems + 1) * sizeof(struct ooCodeSystem*);
+    cs_size = (self->num_codesystems + 1) * 
+	sizeof(struct ooCodeSystem*);
     csp = realloc(self->codesystems, cs_size);
     if (!csp) return oo_NOMEM;
 
@@ -384,7 +475,8 @@ ooMindMap_add_codesystem(struct ooMindMap *self,
 static int
 ooMindMap_add_topic(struct ooMindMap *self, 
 		    xmlNode *xmlcur,
-		    const char *filename)
+		    const char *path,
+		    size_t path_size)
 {
     size_t topics_size;
     struct ooTopic **topics;
@@ -396,7 +488,7 @@ ooMindMap_add_topic(struct ooMindMap *self,
 
     if (topic->read(topic, xmlcur) != oo_OK) {
 	fprintf(stderr,
-		"Failed to read the topic in %s :(\n", filename);
+		"Failed to read the topic in %s :(\n", path);
 	return oo_FAIL;
     }
 
@@ -415,14 +507,195 @@ ooMindMap_add_topic(struct ooMindMap *self,
 }
 
 
-/* import Concepts from XML file */
+static int
+ooMindMap_read_subdomains(struct ooMindMap *self, 
+			  xmlNode *input_node,
+			  const char *parent_path,
+			  size_t parent_path_size,
+			  struct ooDomain *parent)
+{
+    xmlDocPtr doc;
+    xmlNodePtr root_node;
+    xmlNodePtr cur_node;
+    char *filename = NULL;
+    size_t filename_size;
+    char *path = NULL;
+    size_t path_size;
+    int ret;
+
+    printf("Reading subdomains of \"%s\"...\n", parent_path);
+
+    for (cur_node = input_node->children; cur_node; cur_node = cur_node->next) {
+	if (cur_node->type != XML_ELEMENT_NODE) continue;
+
+	    /* nested includes */
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"include"))) {
+
+	    ret = oo_copy_xmlattr(cur_node, "filename", &filename, &filename_size);
+	    if (ret != oo_OK) return ret;
+
+	    path_size = parent_path_size + filename_size;
+	    path = malloc(path_size + 1);
+	    if (!path) {
+		free(filename);
+		return oo_NOMEM;
+	    }
+
+	    strncpy(path, parent_path, parent_path_size);
+	    strncpy(path +  parent_path_size, filename, filename_size);
+	    path[path_size] = '\0';
+
+	    ret = ooMindMap_import(self, (const char*)path, parent);
+
+	    free(path);
+	    free(filename);
+	    filename = NULL;
+	}
+
+    }
+    
+
+    return oo_OK;
+}
+
+
+static int
+ooMindMap_read_domain(struct ooMindMap *self, 
+		      xmlNode *input_node,
+		      const char *parent_path,
+		      size_t parent_path_size,
+		      struct ooDomain *parent)
+{
+    xmlNodePtr cur_node;
+    struct ooDomain *domain;
+    size_t domains_size;
+    struct ooDomain **domains;
+    int ret;
+
+    ret = ooDomain_new(&domain);
+    if (ret != oo_OK) return ret;
+
+    domain->parent = parent;
+
+    if (!parent)
+	domain->depth = 1;
+    else
+	domain->depth = parent->depth + 1;
+
+    ret = oo_copy_xmlattr(input_node, "name", &domain->name, &domain->name_size);
+    if (ret != oo_OK) return ret;
+
+    ret = oo_copy_xmlattr(input_node, "id", &domain->id, &domain->id_size);
+    if (ret != oo_OK) return ret;
+
+
+    if (DEBUG_LEVEL_2) {
+	printf(" -- MindMap: DOMAIN \"%s\"...\n", domain->name);
+    }
+
+    for (cur_node = input_node->children; cur_node; cur_node = cur_node->next) {
+	if (cur_node->type != XML_ELEMENT_NODE) continue;
+
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"title"))) {
+	    ret = oo_copy_xmlattr(cur_node, "text", &domain->title, &domain->title_size);
+	    if (ret == oo_OK && DEBUG_LEVEL_2)
+		printf(" -- MindMap: domain's title: \"%s\"\n", domain->title);
+	    continue;
+	}
+	
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"concept"))) {
+	    ooMindMap_read_concept(self, cur_node, domain);
+	    continue;
+	}
+
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"subdomains")))
+	    ooMindMap_read_subdomains(self, cur_node, 
+				      parent_path, parent_path_size, domain);
+    }
+ 
+
+    /* root domain */
+    if (!parent)
+	self->root_domain = domain;
+    else {
+	/* registration within parent domain */
+	/*printf("PARENT %s accepts child %s\n",
+	  parent->title, domain->title);*/
+
+	domains_size = (parent->num_subdomains + 1) * sizeof(struct ooDomain*);
+	domains = realloc(parent->subdomains, domains_size);
+	if (!domains) return oo_NOMEM;
+	domains[parent->num_subdomains] = domain;
+	parent->subdomains = domains;
+	parent->num_subdomains++;
+    }
+
+    /* global registration */
+    domains_size = (self->num_domains + 1) * sizeof(struct ooDomain*);
+    domains = realloc(self->domains, domains_size);
+    if (!domains) return oo_NOMEM;
+
+    domain->numid = self->num_domains;
+
+    domains[self->num_domains] = domain;
+    self->domains = domains;
+    self->num_domains++;
+    
+    return oo_OK;
+}
+
+static int
+ooMindMap_read_include(struct ooMindMap *self, 
+		       xmlNode *input_node,
+		       const char *parent_path,
+		       size_t parent_path_size)
+{
+    char *child_filename;
+    char *path;
+    size_t child_filename_size;
+    size_t path_size;
+    int ret;
+
+    ret = oo_copy_xmlattr(input_node, "filename", &child_filename, &child_filename_size);
+    if (ret != oo_OK) return ret; 
+
+    path_size = parent_path_size + child_filename_size + 1;
+    path = malloc(path_size);
+    if (!path) return oo_NOMEM;
+
+    strcpy(path, parent_path);
+    strcpy(path + parent_path_size, child_filename);
+    path[path_size] = '\0';
+
+    if (DEBUG_LEVEL_2)
+	fprintf(stderr, " .. reading include: %s\r", path);
+
+    ret = ooMindMap_import(self, (const char*)path, NULL);
+
+    free(child_filename);
+    free(path);
+
+    return ret;
+}
+
+
+
+
+
+/**
+ * import Concepts from XML file 
+ */
 static int
 ooMindMap_import(struct ooMindMap *self, 
-		 const char *filename)
+		 const char *filename,
+		 struct ooDomain *parent_domain)
 {
-    int ret, errcode;
     xmlDocPtr doc;
-    xmlNodePtr root, cur_node;
+    xmlNodePtr root_node, cur_node;
+    char *path = NULL;
+    size_t path_size;
+    size_t chunk_size;
+    int ret = oo_OK;
 
     if (DEBUG_LEVEL_1)
 	printf(" -- MindMap: reading XML file \"%s\"...\n", filename);
@@ -430,53 +703,70 @@ ooMindMap_import(struct ooMindMap *self,
     doc = xmlParseFile(filename);
     if (!doc) {
 	fprintf(stderr,"Document not parsed successfully :( \n");
-	errcode = -1;
-	goto error;
+	ret = -1;
+	goto final;
     }
 
-    root = xmlDocGetRootElement(doc);
-    if (!root) {
+    root_node = xmlDocGetRootElement(doc);
+    if (!root_node) {
 	fprintf(stderr,"empty document\n");
-	errcode = -2;
-	goto error;
+	ret = -2;
+	goto final;
     }
 
-    /* concepts and codes */
-    if (!xmlStrcmp(root->name, (const xmlChar *) "conceptlist")) {
-	for (cur_node = root->children; cur_node; cur_node = cur_node->next) {
+    ret = oo_extract_dirpath(filename, &path, &path_size);
+    if (ret != oo_OK) goto final;
+
+    if (DEBUG_LEVEL_1)
+	printf(" -- MindMap: successfully parsed XML file in \"%s\"\n", path);
+
+   /* concepts and codes */
+    if (!xmlStrcmp(root_node->name, (const xmlChar *) "conceptlist")) {
+	for (cur_node = root_node->children; cur_node; cur_node = cur_node->next) {
 	    if (cur_node->type != XML_ELEMENT_NODE) continue;
+
+	    /* nested includes */
+	    /*if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"include"))) 
+	      ooMindMap_read_include(self, cur_node, path, path_size);*/
 
 	    /* read the codesystem */
 	    if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"codesystem"))) 
-		ooMindMap_add_codesystem(self, cur_node, filename);
-
-	    /* read the concept */
-	    if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"concept"))) 
-		ooMindMap_add_concept(self, cur_node, filename);
-	    
+		ooMindMap_read_codesystem(self, cur_node, path, path_size);
 	}
-    }  /*  topics */
-    else if (!xmlStrcmp(root->name, (const xmlChar *) "topics")) {
-	for (cur_node = root->children; cur_node; cur_node = cur_node->next) {
+	goto final;
+    } 
+
+    /* read conceptual domains */
+    if (!xmlStrcmp(root_node->name, (const xmlChar *)"domain")) {
+	ooMindMap_read_domain(self, root_node, path, path_size, parent_domain);
+	goto final;
+    }
+
+    /*  topics */
+    if (!xmlStrcmp(root_node->name, (const xmlChar *) "topics")) {
+	for (cur_node = root_node->children; cur_node; cur_node = cur_node->next) {
 	    if (cur_node->type != XML_ELEMENT_NODE) continue;
 	    /* read the topics */
-	    if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"topic"))) 
-		ooMindMap_add_topic(self, cur_node, filename);
+	    if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"topic")))
+		ooMindMap_add_topic(self, cur_node, path, path_size);
 	}
-    }
-    else {
-	fprintf(stderr, "Document of the wrong type, the root node is not \"conceptlist\"\n");
-	errcode = -3;
-	goto error;
+	goto final;
     }
 
-    errcode = oo_OK;
+    fprintf(stderr,
+	    "The root element \"%s\" is not supported :(\n",
+	    root_node->name);
+    ret = -3;
 
-error:
-    xmlFreeDoc(doc);
-    xmlCleanupParser();
+final:
 
-    return errcode;
+    if (path)
+	free(path);
+
+    if (doc)
+	xmlFreeDoc(doc);
+
+    return ret;
 }
 
 
@@ -485,6 +775,7 @@ ooMindMap_resolve_refs(struct ooMindMap *self)
 {
     struct ooCodeSystem *cs, *provider;
     struct ooTopic *topic;
+    struct ooConcept *conc;
     int ret;
     char *provider_name;
     size_t i, j;
@@ -515,7 +806,7 @@ ooMindMap_resolve_refs(struct ooMindMap *self)
 	    ret = cs->coordinate_codesets(cs, provider);
 
 	    if (DEBUG_LEVEL_1)
-		printf("Register %s at %p...\n", provider->name, provider);
+		printf("Register %s at %p...\n", provider->name, (void*)provider);
 
 	    cs->providers[j] = provider;
 	}
@@ -528,8 +819,11 @@ ooMindMap_resolve_refs(struct ooMindMap *self)
 			       self->num_concepts);
     if (!self->topic_index) return oo_NOMEM;
 
-    for (i = 0; i < self->num_concepts; i++) 
+    for (i = 0; i < self->num_concepts; i++) {
 	self->topic_index[i] = NULL;
+	conc = self->concept_index[i];
+	if (!conc) continue;
+    }
 
     for (i = 0; i < self->num_topics; i++) {
 	topic = self->topics[i];
@@ -554,6 +848,7 @@ ooMindMap_build_cache(struct ooMindMap *self)
 	if (!cs) continue;
 	ret = cs->build_cache(cs);
     }
+
 
     return oo_OK;
 }
@@ -610,8 +905,7 @@ ooMindMap_new(struct ooMindMap **mm)
 	goto error;
     }
 
-
-     self->_name_index = NULL;
+    self->_name_index = NULL;
 
     self->concept_index = malloc(sizeof(struct ooConcept*) * 
 				 DEFAULT_INDEX_SIZE);
@@ -629,6 +923,11 @@ ooMindMap_new(struct ooMindMap **mm)
 
     ret = ooDict_new(&self->_name_index);
     if (ret != oo_OK) goto error;
+
+
+    self->root_domain = NULL;
+    self->domains = NULL;
+    self->num_domains = 0;
 
     /* 0 has a special value of "Any Other Topic" */
     self->topics = malloc(sizeof(struct ooTopic*));
@@ -657,6 +956,7 @@ ooMindMap_new(struct ooMindMap **mm)
     self->lookup = ooMindMap_lookup;
     self->keys = ooMindMap_keys;
 
+    self->add_concept = ooMindMap_add_concept;
 
 
     *mm = self;

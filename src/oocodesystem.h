@@ -23,10 +23,15 @@
 
 #include <libxml/parser.h>
 
+#include "ooconcept.h"
 #include "oodict.h"
-#include "oomindmap.h"
 
-typedef enum codesystem_t { CS_DENOTATIONAL, CS_OPERATIONAL, CS_COMPLEX, CS_POSITIONAL } codesystem_t;
+struct ooMindMap;
+
+typedef enum codesystem_t { CS_DENOTATIONAL, 
+			    CS_OPERATIONAL, 
+			    CS_COMPLEX, 
+			    CS_POSITIONAL } codesystem_t;
 
 typedef enum atomic_codesystem_t  { ATOMIC_UTF8, 
 				    ATOMIC_UTF16, 
@@ -108,7 +113,8 @@ typedef struct ooCodeSystem {
     int (*del)(struct ooCodeSystem *self);
 
     /* find the denotations of a Concept */
-    int (*lookup)(struct ooCodeSystem *self, struct ooConcept *conc);
+    int (*lookup)(struct ooCodeSystem *self, 
+		  struct ooConcept *conc);
 
     int (*coordinate_codesets)(struct ooCodeSystem *self, 
 			       struct ooCodeSystem *cs);

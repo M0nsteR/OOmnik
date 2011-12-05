@@ -28,6 +28,7 @@
 #include "oocode.h"
 #include "oocache.h"
 #include "oosegmentizer.h"
+#include "ooaccumulator.h"
 
 /*  destructor */
 static int
@@ -175,7 +176,8 @@ ooDecoder_add_providers(struct ooDecoder *self,
 
 
 static int
-ooDecoder_set_codesystem(struct ooDecoder *self, struct ooCodeSystem *cs)
+ooDecoder_set_codesystem(struct ooDecoder *self, 
+			 struct ooCodeSystem *cs)
 {
     size_t i;
     int ret;
@@ -208,14 +210,12 @@ ooDecoder_set_codesystem(struct ooDecoder *self, struct ooCodeSystem *cs)
     self->segm->agenda->codesystem = cs;
     self->segm->num_solutions = cs->num_providers;
 
-
-    /* TODO: only root decoder must take care of topic clustering */
-    ret = self->accu->build_topic_index(self->accu, cs->mindmap);
-    if (ret != oo_OK) return ret;
-
+    if (self->is_root) {
+	ret = self->accu->build_indices(self->accu, cs->mindmap);
+	if (ret != oo_OK) return ret;
+    }
 
     /* TODO: agenda's exact index size must be set here! */
-    
 
 
     return oo_OK;
@@ -262,14 +262,16 @@ ooDecoder_analyze_units(struct ooDecoder *self)
 
     /* root decoder saves the best interpretation */
     if (self->is_root) {
-	
-	printf("\n\n\nFINAL STATE OF AGENDA:\n");
 
 	agenda = self->segm->agenda;
 	agenda->accu = self->accu;
 
-	agenda->present_solution(agenda, NULL,
-				 0, agenda->last_idx_pos + 1);
+	/*printf("\n\n\nFINAL STATE OF AGENDA (last idx: %d):\n",
+	  agenda->last_idx_pos + 1);*/
+
+	ret = agenda->present_solution(agenda, NULL,
+				       0, agenda->last_idx_pos + 1);
+	if (ret != oo_OK) return ret;
 
 	num_remaining_solutions = self->segm->num_solutions -\
 	    self->segm->next_solution_id;
@@ -298,13 +300,15 @@ ooDecoder_analyze_units(struct ooDecoder *self)
 static int
 ooDecoder_decode(struct ooDecoder *self)
 {
-    int i, ret, segm_count;
     struct ooLinearCache *cache = self->codesystem->cache;
     struct ooConcUnit *cu;
+    int ret;
 
     if (DEBUG_LEVEL_1)
-	printf("  ** Decoder \"%s\" at work. task id: %zu\n", 
-	       self->codesystem->name, self->task_id);
+	printf("  ** Decoder \"%s\" at work. task id: %lu input: %s\n", 
+	       self->codesystem->name, 
+	       (unsigned long)self->task_id,
+	       self->input);
 
     /* clean up the agenda */
     self->agenda->reset(self->agenda);
@@ -335,19 +339,28 @@ ooDecoder_decode(struct ooDecoder *self)
     ret = self->segm->segmentize(self->segm);
     if (ret != oo_OK) return ret;
 
+    ret = ooDecoder_analyze_units(self);
+    if (ret != oo_OK) return ret;
+
+    /*if (self->is_root)
+	printf("ROOT DECODER: terms: %d  segm: %d symbols!\n", 
+	       self->num_terminals,
+	       self->segm->num_terminals);*/
+
     self->num_parsed_atoms = self->segm->num_parsed_atoms;
     self->num_terminals = self->segm->num_terminals;
 
-    return ooDecoder_analyze_units(self);
+    return oo_OK;
 }
 
 
 static int
 ooDecoder_process_string(struct ooDecoder *self,
 			 const char *input)
-{   char buf[INPUT_BUF_SIZE + 1] = {0};
-    const char *c;
-    size_t task_id = 1, last_pos = 0, i = 0, offset = 0;
+{   
+    char buf[INPUT_BUF_SIZE + 1] = { 0 };
+    const unsigned char *c;
+    size_t task_id = 0, last_pos = 0, i = 0, offset = 0;
     int ret = oo_OK;
 
     c = input;
@@ -357,7 +370,7 @@ ooDecoder_process_string(struct ooDecoder *self,
      * filling the window buffer
      */
     while (*c) {
-	
+
 	if (i < INPUT_BUF_SIZE) {
             buf[i++] = *c++;
 	    continue;
@@ -365,17 +378,24 @@ ooDecoder_process_string(struct ooDecoder *self,
 
 	/* buffer is full */
 	buf[INPUT_BUF_SIZE] = '\0';
+
 	self->input = buf;
 	self->input_len = INPUT_BUF_SIZE;
 
 	/* decode the complete buffer */
 	ret = self->decode(self);
+	if (ret != oo_OK) return ret;
 
 	last_pos = self->num_parsed_atoms;
 	self->term_count += self->num_terminals;
 
+	/*printf("AFTER BATCH %d: term count: %d\n", 
+	  task_id, self->term_count);*/
+	task_id++;
+
 	/* some unrecognized atoms are left in the remainder */
-	if (last_pos < i) { /*printf("i: %u last_pos: %u\n", i, last_pos); */
+	if (last_pos < i) { 
+
 	    offset = i - last_pos;
 	    if (offset < MAX_UNREC_ATOMS) { /*printf("offset: %u\n", offset);*/
 		c -= offset;
@@ -388,6 +408,7 @@ ooDecoder_process_string(struct ooDecoder *self,
 	/*self->input_offset += i;*/
 	i = 0;
     }
+
     buf[i] = '\0';
 
     /* scan the remainder if any */
@@ -398,11 +419,6 @@ ooDecoder_process_string(struct ooDecoder *self,
 	/* decode the last buffer */
 	ret = self->decode(self);
     }
-
-
-    /*ret = self->accu->write_output(self->accu,
-				   self->input, 
-				   self->oomnik->format);*/
 
     return ret;
 }

@@ -25,7 +25,7 @@
 
 #include "oomnik.h"
 #include "ooconcunit.h"
-#include "ooaccumulator.h"
+
 #include "ooagenda.h"
 
 /**

@@ -57,7 +57,7 @@ typedef struct ooLinearCacheCell {
 
 /**
  * OOmnik Linear Cache object stores the linear sequences of codes
- * mapped directly to their denotations 
+ * mapped directly to their denotations
  */
 typedef struct ooLinearCache {
 

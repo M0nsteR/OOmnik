@@ -69,6 +69,7 @@ typedef struct ooAgenda {
 
     /* all possible combinations */
     struct ooComplex *linear_index[INPUT_BUF_SIZE];
+    size_t linear_index_size;
 
     /* a single solution */
     struct ooComplex *best_complex;
@@ -80,6 +81,7 @@ typedef struct ooAgenda {
     /* positional tail */
     struct ooConcUnit *linear_last;
 
+    bool has_garbage;
 
     /***********  public methods ***********/
     int (*del)(struct ooAgenda *self);

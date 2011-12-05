@@ -25,6 +25,7 @@
 #include "ooconfig.h"
 #include "ooconcunit.h"
 #include "oocode.h"
+#include "oomindmap.h"
 
 /* forward declarations */
 static int
@@ -58,7 +59,7 @@ static
 int ooCode_del(struct ooCode *self)
 {
     size_t i;
-    struct ooCodeAttr *attr, *next_attr;
+    struct ooCodeSpec *spec, *next_spec;
     struct ooAdaptContext *context;
 
     if (self->cache->num_seqs) {
@@ -93,26 +94,26 @@ int ooCode_del(struct ooCode *self)
 
 
     /* discourse children and parents */
-    for (i = 0; i < NUM_OPERS; i++) {
-	attr = self->children[i];
-	while (attr) {
-	    next_attr = attr->next;
-	    if (attr->code_name)
-		free(attr->code_name);
-	    free(attr);
-	    attr = next_attr;
+    for (i = 0; i < OO_NUM_OPERS; i++) {
+
+	spec = self->children[i];
+	while (spec) {
+	    next_spec = spec->next;
+	    if (spec->code_name)
+		free(spec->code_name);
+	    free(spec);
+	    spec = next_spec;
 	}
 
-	attr = self->parents[i];
-	while (attr) {
-	    next_attr = attr->next;
-	    if (attr->code_name)
-		free(attr->code_name);
-	    free(attr);
-	    attr = next_attr;
+	spec = self->parents[i];
+	while (spec) {
+	    next_spec = spec->next;
+	    if (spec->code_name)
+		free(spec->code_name);
+	    free(spec);
+	    spec = next_spec;
 	}
     }
-
 
     /* code denotations */
     for (i = 0; i < self->num_denots; i++)
@@ -135,8 +136,8 @@ int ooCode_del(struct ooCode *self)
     if (self->cache)
 	free(self->cache);
 
-    if (self->complex)
-	ooCodeUnit_del(self->complex);
+    if (self->shared)
+	ooCodeUnit_del(self->shared);
 
     if (self->baseclass_name)
 	free(self->baseclass_name);
@@ -177,9 +178,9 @@ int ooCodeUsage_del(struct ooCodeUsage *self)
     return oo_OK;
 }
 
-/*  ooDeriv destructor */
+/*  ooCodeDeriv destructor */
 static
-int ooDeriv_del(struct ooDeriv *self)
+int ooCodeDeriv_del(struct ooCodeDeriv *self)
 {
     if (self->name) free(self->name);
     if (self->usage_name) free(self->usage_name);
@@ -196,8 +197,8 @@ static
 const char* ooCode_str(struct ooCode *self)
 {
     struct ooCodeUnit *cu;
-    struct ooCodeUnitAttr *cu_attr;
-    struct ooDeriv *deriv;
+    struct ooCodeUnitSpec *spec;
+    struct ooCodeDeriv *deriv;
     const char *code_name;
 
     const char *cs_name = "Unspec";
@@ -210,27 +211,29 @@ const char* ooCode_str(struct ooCode *self)
 	   cs_name, self->name, (unsigned long)self->id, self->type,
 	   self->baseclass_name, (unsigned long)self->num_usages);
 
-    for (i = 0; i < self->num_usages; i++)
+    for (i = 0; i < self->num_usages; i++) {
+	printf("%d) %p\n", i, self->usages[i]);
 	self->usages[i]->str(self->usages[i]);
+    }
 
     for (i = 0; i < self->num_denots; i++) {
 	printf("  -- denot: %s\n", self->denot_names[i]);
     }
 
-    cu = self->complex;
+    cu = self->shared;
 
     while (cu) {
 	printf("    nested code unit:\n");
 	cu->code->str(cu->code);
 	if (cu->num_specs == 0) break;
-	cu_attr = cu->specs[0];
-	cu = cu_attr->unit;
+	spec = cu->specs[0];
+	cu = spec->unit;
     }
 
     if (self->num_children) {
 	printf("     -- children: %zu\n", self->num_children);
 
-	for (i = 0; i < NUM_OPERS; i++) {
+	for (i = 0; i < OO_NUM_OPERS; i++) {
 	    if (!self->children[i]) continue;
 	    code_name = self->children[i]->code_name;
 	    if (!code_name) continue;
@@ -240,7 +243,7 @@ const char* ooCode_str(struct ooCode *self)
 
     if (self->num_parents) {
 	printf("     -- parents: %zu\n", self->num_parents);
-	for (i = 0; i < NUM_OPERS; i++) {
+	for (i = 0; i < OO_NUM_OPERS; i++) {
 	    if (!self->parents[i]) continue;
 	    printf("      parent: %s (%zu)\n", 
 		   self->parents[i]->code->name, 
@@ -248,6 +251,7 @@ const char* ooCode_str(struct ooCode *self)
 	}
     }
 
+    printf(" ----- \n");
     /*if (self->cache) {
 	for (i = 0; i < self->cache->num_seqs; i++) {
 	}
@@ -260,7 +264,8 @@ static
 const char* ooCodeUsage_str(struct ooCodeUsage *self)
 {
     size_t i;
-    printf("   -- CodeUsage: \"%s\"\n", self->conc_name);
+    printf("   -- CodeUsage: \"%s\" concref: %p\n", 
+	   self->conc_name, self->conc);
 
     for (i = 0; i < self->num_derivs; i++) 
 	self->derivs[i]->str(self->derivs[i]);
@@ -274,10 +279,10 @@ const char* ooCodeUsage_str(struct ooCodeUsage *self)
 }
 
 static
-const char* ooDeriv_str(struct ooDeriv *self)
+const char* ooCodeDeriv_str(struct ooCodeDeriv *self)
 {
 
-    printf("      -- ooDeriv: \"%s\" [%s] %p\n", 
+    printf("      -- ooCodeDeriv: \"%s\" [%s] %p\n", 
 	   self->name, self->usage_name, self);
     printf("                oper: %d  arg: %s [%s]\n",
 	   self->operid, self->arg_code_name, self->arg_code_usage_name);
@@ -312,42 +317,42 @@ ooCode_match_operid(struct ooCode *self,
 static int
 ooCode_set_backref(struct ooCode *self,
 		   struct ooCode *child,
-		   oper_type operid,
-		   struct ooCodeAttr *child_attr)
+		   oo_oper_type operid,
+		   struct ooCodeSpec *child_spec)
 {
     int ret;
-    struct ooCodeAttr *attr;
+    struct ooCodeSpec *spec;
 
-    attr = malloc(sizeof(struct ooCodeAttr));
-    if (!attr) return oo_NOMEM;
+    spec = malloc(sizeof(struct ooCodeSpec));
+    if (!spec) return oo_NOMEM;
 
-    attr->operid = operid;
-    attr->concid = self->id;
-    attr->code_name = NULL;
-    attr->code = self;
-    attr->linear_order = ANYPOS;
-    attr->linear_contact = child_attr->linear_contact;
-    attr->stackable = child_attr->stackable;
-    attr->implied_parent = child_attr->implied_parent;
-    attr->next = NULL;
+    spec->operid = operid;
+    spec->concid = self->id;
+    spec->code_name = NULL;
+    spec->code = self;
+    spec->linear_order = OO_ANY_POS;
+    spec->linear_contact = child_spec->linear_contact;
+    spec->stackable = child_spec->stackable;
+    spec->implied_parent = child_spec->implied_parent;
+    spec->next = NULL;
 
     /* reverse linear position */
-    if (child_attr->linear_order == PREPOS) attr->linear_order = POSTPOS;
-    if (child_attr->linear_order == POSTPOS) attr->linear_order = PREPOS;
+    if (child_spec->linear_order == OO_PRE_POS) spec->linear_order = OO_POST_POS;
+    if (child_spec->linear_order == OO_POST_POS) spec->linear_order = OO_PRE_POS;
 
     if (DEBUG_CS_LEVEL_3) {
 	printf("  .. Adding parent \"%s\"  to \"%s\""
                "  (oper: %d) linear_contact: %d implied_parent: %d\n", 
-	       self->name, child->name, attr->operid,
-	       attr->linear_contact, attr->implied_parent);
+	       self->name, child->name, spec->operid,
+	       spec->linear_contact, spec->implied_parent);
 	printf("Learning child's id: %zu\n",
 	       child->id);
     }
 
 
     /* setting up parent relation */
-    attr->next = child->parents[operid];
-    child->parents[operid] = attr;
+    spec->next = child->parents[operid];
+    child->parents[operid] = spec;
     child->num_parents++;
 
     return oo_OK;
@@ -383,14 +388,17 @@ static int
 ooCode_resolve_refs(struct ooCode *self)
 {
     struct ooCode *child_code, *ref;
-    struct ooCodeAttr *attr, *child_attr;
+    struct ooCodeSpec *spec, *child_spec;
     struct ooCodeUsage *usage;
-    struct ooDeriv *deriv;
+    struct ooCodeDeriv *deriv;
     struct ooMindMap *mindmap;
     struct ooConcept *conc;
     int operid, ret, i;
 
     mindmap = self->cs->mindmap;
+
+    if (DEBUG_CS_LEVEL_4)
+	printf("\nRESOLVE REFS of \"%s\"\n", self->name);
 
     /* baseclass reference */
     if (self->baseclass_name) {
@@ -413,13 +421,14 @@ ooCode_resolve_refs(struct ooCode *self)
 	if (!usage->conc_name) continue;
 	conc = mindmap->lookup(mindmap, (const char*)usage->conc_name);
 	if (!conc) {
-	  /*printf("\n -- usage reference not resolved: %s :((\n", usage->conc_name);*/
+	  printf("\n -- usage reference not resolved: %s :((\n", usage->conc_name);
 	  continue;
 	}
+	/*printf("resolved -> %s : %s\n", conc->name, conc->id);*/
 	usage->conc = conc;
    }
 
-    for (operid = 0; operid < NUM_OPERS; operid++) {
+    for (operid = 0; operid < OO_NUM_OPERS; operid++) {
 	/* usage references */
 	deriv = self->deriv_matches[operid];
 
@@ -447,31 +456,31 @@ ooCode_resolve_refs(struct ooCode *self)
 	}
 
 	/* children to parents */
-	child_attr = self->children[operid];
-	if (!child_attr) continue;
+	child_spec = self->children[operid];
+	if (!child_spec) continue;
 	    
-	while (child_attr) {
+	while (child_spec) {
 	    
 	    if (DEBUG_CS_LEVEL_4)
-		printf("  BACKREF TO PARENT: %s FROM CHILD ATTR " 
+		printf("  BACKREF TO PARENT: %s FROM CHILD SPEC " 
                        " CODE NAME: %s LINEAR ORDER: %d\n", 
 		       self->name,
-		       child_attr->code_name, child_attr->linear_order);
+		       child_spec->code_name, child_spec->linear_order);
 
-	    if (!child_attr->code_name) goto next_attr;
+	    if (!child_spec->code_name) goto next_spec;
 	    child_code = (struct ooCode*)self->cs->codes->get(self->cs->codes, 
-							      child_attr->code_name);
+							      child_spec->code_name);
 	    if (!child_code) break;
 
 	    /* replace the temporary code with the real one */
-	    /* child_attr->code->del(child_attr->code);*/
+	    /* child_spec->code->del(child_spec->code);*/
 
-	    child_attr->code = child_code;
-	    child_attr->concid = child_code->id; 
+	    child_spec->code = child_code;
+	    child_spec->concid = child_code->id; 
 
-	    ret = ooCode_set_backref(self, child_code, operid, child_attr);
-	next_attr:
-	    child_attr = child_attr->next;
+	    ret = ooCode_set_backref(self, child_code, operid, child_spec);
+	next_spec:
+	    child_spec = child_spec->next;
 	}
 
     }
@@ -501,19 +510,19 @@ ooCode_read_position_constraints(struct ooCode *self,
 	if (cur_node->type != XML_ELEMENT_NODE) continue;
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"prepos"))) {
-	    ret = ooConstraintGroup_init(&cg);
+	    ret = ooConstraintGroup_new(&cg);
 	    if (ret != oo_OK) return ret;
 	    ret = cg->read(cg, self, cur_node->children);
 	    if (ret != oo_OK) return ret;
-	    if (role == AFFECTS) context->affects_prepos = cg;
+	    if (role == OO_AFFECTS) context->affects_prepos = cg;
 	    else context->affected_prepos = cg; 
 	}
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"postpos"))) {
-	    ret = ooConstraintGroup_init(&cg);
+	    ret = ooConstraintGroup_new(&cg);
 	    if (ret != oo_OK) return ret;
 	    ret = cg->read(cg, self, cur_node->children);
 	    if (ret != oo_OK) return ret;
-	    if (role == AFFECTS) context->affects_postpos = cg;
+	    if (role == OO_AFFECTS) context->affects_postpos = cg;
 	    else context->affected_postpos = cg; 
 	}
     }
@@ -536,12 +545,12 @@ ooCode_read_cache_unit_context(struct ooCode *self,
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"affects"))) {
 	    ret = ooCode_read_position_constraints(self, 
-				 cur_node->children, context, AFFECTS);
+				 cur_node->children, context, OO_AFFECTS);
 	}
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"affected"))) {
 	    ret = ooCode_read_position_constraints(self, 
 						   cur_node->children, 
-						   context, AFFECTED);
+						   context, OO_AFFECTED);
 	}
     }
     return oo_OK;
@@ -634,9 +643,9 @@ ooCode_read_specs(struct ooCode *self,
 		       xmlNode *input_node)
 {
     xmlNode *cur_node = NULL;
-    oper_type operid;
+    oo_oper_type operid;
     char *oper_name, *name, *value;
-    struct ooCodeAttr *attr, **specs;
+    struct ooCodeSpec *spec, **specs;
     struct ooCode *child;
     linear_type linear_order;
     bool linear_contact, stackable, implied_parent;
@@ -647,11 +656,20 @@ ooCode_read_specs(struct ooCode *self,
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"spec"))) {
 	    /* default linear order */
-	    linear_order = ANYPOS;
+	    linear_order = OO_ANY_POS;
 
 	    oper_name = (char*)xmlGetProp(cur_node,  (const xmlChar *)"oper");
 	    if (!oper_name) continue;
+
 	    operid = ooCode_match_operid(self, (const char*)oper_name);
+	    
+	    if (operid <= 0 || operid >= OO_NUM_OPERS) {
+		fprintf(stderr, " Unrecognized operid \"%s\"...\n", 
+			oper_name);
+		xmlFree(oper_name);
+		continue;
+	    }
+
 	    xmlFree(oper_name);
 
 	    name = (char*)xmlGetProp(cur_node,  (const xmlChar *)"operand");
@@ -659,8 +677,8 @@ ooCode_read_specs(struct ooCode *self,
 	    
 	    value = (char*)xmlGetProp(cur_node,  (const xmlChar *)"linear_order");
 	    if (value) {
-		if (!strcmp(value, "prepos")) linear_order = PREPOS;
-		if (!strcmp(value, "postpos")) linear_order = POSTPOS;
+		if (!strcmp(value, "prepos")) linear_order = OO_PRE_POS;
+		if (!strcmp(value, "postpos")) linear_order = OO_POST_POS;
 		xmlFree(value);
 	    }
 
@@ -687,32 +705,33 @@ ooCode_read_specs(struct ooCode *self,
 		xmlFree(value);
 	    }
 
-
-	    attr = malloc(sizeof(struct ooCodeAttr));
-	    if (!attr) {
+	    spec = malloc(sizeof(struct ooCodeSpec));
+	    if (!spec) {
 		xmlFree(name);
 		return oo_NOMEM;
 	    }
-	    attr->operid = operid;
-	    attr->concid = 0;  /* real value to be assigned at a later stage */
-	    attr->linear_order = linear_order;
-	    attr->linear_contact = linear_contact;
-	    attr->stackable = stackable;
-	    attr->implied_parent = implied_parent;
-	    attr->next = NULL;
-	    attr->code = NULL;
+	    spec->operid = operid;
+	    spec->concid = 0;  /* real value to be assigned at a later stage */
+	    spec->linear_order = linear_order;
+	    spec->linear_contact = linear_contact;
+	    spec->stackable = stackable;
+	    spec->implied_parent = implied_parent;
+	    spec->next = NULL;
+	    spec->code = NULL;
 
-	    attr->code_name = malloc(strlen(name) + 1);
-	    if (!attr->code_name) {
-		free(attr);
+	    spec->code_name = malloc(strlen(name) + 1);
+	    if (!spec->code_name) {
+		free(spec);
 		xmlFree(name);
 		return oo_NOMEM;
 	    }
-	    strcpy(attr->code_name, name);
+	    strcpy(spec->code_name, name);
 	    xmlFree(name);
 
-	    attr->next = self->children[operid];
-	    self->children[operid] = attr;
+	    printf("%s OPERID: %d\n", spec->code_name, operid);
+
+	    spec->next = self->children[operid];
+	    self->children[operid] = spec;
 	    self->num_children++;
 
 	}
@@ -777,15 +796,15 @@ ooCode_read_implied_codes(struct ooCode *self,
 }
 
 static struct ooCodeUnit*
-ooCode_read_complex_unit(struct ooCode *self,
+ooCode_read_shared_unit(struct ooCode *self,
 			 xmlNode *input_node)
 {
-    xmlNode *cur_node, *attr_node, *aggr_node;
+    xmlNode *cur_node, *spec_node, *aggr_node;
     char *code_name, *oper_name;
     int operid;
     struct ooCode *code;
     struct ooCodeUnit *unit, *aggr_unit;
-    struct ooCodeUnitAttr *cu_attr, **specs;
+    struct ooCodeUnitSpec *spec, **specs;
     int ret;
 
     code_name = (char*)xmlGetProp(input_node,  (const xmlChar *)"name");
@@ -813,35 +832,35 @@ ooCode_read_complex_unit(struct ooCode *self,
 
 	if ((xmlStrcmp(cur_node->name, (const xmlChar *)"specs"))) continue;
 
-	for (attr_node = cur_node->children; attr_node; attr_node = attr_node->next) {
-	    if (attr_node->type != XML_ELEMENT_NODE) continue;
-	    if ((xmlStrcmp(attr_node->name, (const xmlChar *)"spec"))) continue;
+	for (spec_node = cur_node->children; spec_node; spec_node = spec_node->next) {
+	    if (spec_node->type != XML_ELEMENT_NODE) continue;
+	    if ((xmlStrcmp(spec_node->name, (const xmlChar *)"spec"))) continue;
 
 	    /* what kind of operation is this? */
-	    oper_name = (char*)xmlGetProp(attr_node,  (const xmlChar *)"oper");
+	    oper_name = (char*)xmlGetProp(spec_node,  (const xmlChar *)"oper");
 	    if (!oper_name) continue;
 	    operid = ooCode_match_operid(self, (const char*)oper_name);
 	    xmlFree(oper_name);
 	    if (operid == -1) continue;
 
-	    for (aggr_node = attr_node->children; aggr_node; aggr_node = aggr_node->next) {
+	    for (aggr_node = spec_node->children; aggr_node; aggr_node = aggr_node->next) {
 		if (aggr_node->type != XML_ELEMENT_NODE) continue;
 		if ((xmlStrcmp(aggr_node->name, (const xmlChar *)"unit"))) continue;
 
-		aggr_unit = ooCode_read_complex_unit(self, aggr_node);
+		aggr_unit = ooCode_read_shared_unit(self, aggr_node);
 		if (!aggr_unit) continue;
 
-		specs = realloc(unit->specs, (sizeof(struct ooCodeAttr*) *
+		specs = realloc(unit->specs, (sizeof(struct ooCodeSpec*) *
 					((self->num_children)  + 1)));
 		if (!specs) continue;
 
-		cu_attr = malloc(sizeof(struct ooCodeUnitAttr));
-		if (!cu_attr) continue;
+		spec = malloc(sizeof(struct ooCodeUnitSpec));
+		if (!spec) continue;
 
-		cu_attr->operid = operid;
-		cu_attr->unit = aggr_unit;
+		spec->operid = operid;
+		spec->unit = aggr_unit;
 
-		specs[unit->num_specs] = cu_attr;
+		specs[unit->num_specs] = spec;
 		unit->specs = specs;
 		unit->num_specs++;
 	    }
@@ -854,7 +873,7 @@ ooCode_read_complex_unit(struct ooCode *self,
 }
 
 static int
-ooCode_read_complex(struct ooCode *self, 
+ooCode_read_shared_code(struct ooCode *self, 
 			 xmlNode *input_node)
 {
     xmlNode *cur_node = NULL;
@@ -862,14 +881,14 @@ ooCode_read_complex(struct ooCode *self,
     int ret;
 
     if (DEBUG_CS_LEVEL_3)
-	printf("\n *** Reading Code's Complex...\n");
+	printf("\n *** Reading shared code...\n");
 
     for (cur_node = input_node; cur_node; cur_node = cur_node->next) {
 	if (cur_node->type != XML_ELEMENT_NODE) continue;
 
 	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"unit"))) {
-	    self->complex = ooCode_read_complex_unit(self, cur_node);
-	    
+	    self->shared = ooCode_read_shared_unit(self, cur_node);
+
 	    if (DEBUG_CS_LEVEL_3)
 		self->str(self);
 	}
@@ -901,7 +920,7 @@ ooCode_read_usage_derivs(struct ooCode *self,
 {
     xmlNode *cur_node;
     char *value;
-    struct ooDeriv *deriv;
+    struct ooCodeDeriv *deriv;
     size_t derivs_size;
 
     int ret;
@@ -918,7 +937,7 @@ ooCode_read_usage_derivs(struct ooCode *self,
 	    }
 
 	    /* new derivation */
-	    ret = ooDeriv_init(&deriv);
+	    ret = ooCodeDeriv_init(&deriv);
 	    deriv->name = malloc(strlen(value) + 1);
 	    if (!deriv->name) {
 		deriv->del(deriv);
@@ -998,7 +1017,7 @@ ooCode_read_usage_derivs(struct ooCode *self,
 	    xmlFree(value);
 
 	    /* register new derivation */
-	    derivs_size = (usage->num_derivs + 1) * sizeof(struct ooDeriv*);
+	    derivs_size = (usage->num_derivs + 1) * sizeof(struct ooCodeDeriv*);
 	    usage->derivs = realloc(usage->derivs, derivs_size);
 	    if (!usage->derivs) {
 		deriv->del(deriv);
@@ -1042,7 +1061,6 @@ ooCode_read_usage(struct ooCode *self,
 	    ret = ooCode_read_usage_derivs(self, cur_node->children, 
 					   usage);
 	}
-
 
 
 
@@ -1209,8 +1227,8 @@ ooCode_read_XML(struct ooCode *self,
 	    continue;
 	}
 
-	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"complex"))) {
-	    ret = ooCode_read_complex(self, cur_node->children);
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"shared"))) {
+	    ret = ooCode_read_shared_code(self, cur_node->children);
 	    continue;
 	}
 
@@ -1238,11 +1256,11 @@ ooCode_read_XML(struct ooCode *self,
 
 
 
-/*  ooDeriv initializer */
-int ooDeriv_init(struct ooDeriv **deriv)
+/*  ooCodeDeriv initializer */
+int ooCodeDeriv_init(struct ooCodeDeriv **deriv)
 {   
     int i;
-    struct ooDeriv *self = malloc(sizeof(struct ooDeriv));
+    struct ooCodeDeriv *self = malloc(sizeof(struct ooCodeDeriv));
     if (!self) return oo_NOMEM;
 
     self->name = NULL;
@@ -1262,8 +1280,8 @@ int ooDeriv_init(struct ooDeriv **deriv)
     self->arg_code_usage = NULL;
     self->next = NULL;
 
-    self->del = ooDeriv_del;
-    self->str = ooDeriv_str;
+    self->del = ooCodeDeriv_del;
+    self->str = ooCodeDeriv_str;
 
     *deriv = self;
     return oo_OK;    
@@ -1313,11 +1331,13 @@ int ooCode_new(struct ooCode **code)
 
     self->cs = NULL;
 
-    self->complex = NULL;
+    self->shared = NULL;
 
     self->baseclass_name = NULL;
     self->baseclass = NULL;
-    
+   
+    self->verif_level = 0;
+
     self->usages = NULL;
     self->num_usages = 0;
 
@@ -1336,7 +1356,7 @@ int ooCode_new(struct ooCode **code)
     self->implied_code_names = NULL;
     self->num_implied_codes = 0;
 
-    for (i = 0; i < NUM_OPERS; i++) {
+    for (i = 0; i < OO_NUM_OPERS; i++) {
 	self->parents[i] = NULL;
 	self->children[i] = NULL;
 	self->deriv_matches[i] = NULL;

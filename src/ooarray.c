@@ -44,6 +44,9 @@ static int
 ooArray_del(struct ooArray *self)
 {
     self->clear(self);
+
+    free(self);
+
     return oo_OK;
 }
 

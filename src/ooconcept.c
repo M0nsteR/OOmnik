@@ -25,8 +25,23 @@
 #include <db.h>
 
 #include "ooconfig.h"
+#include "oomindmap.h"
 #include "ooconcept.h"
+#include "oodomain.h"
+#include "ooutils.h"
 
+
+extern const char *oo_oper_type_names[] = 
+{  OO_STR(OO_NONE), 
+   OO_STR(OO_IS_SUBCLASS), 
+   OO_STR(OO_AGGREGATES), 
+   OO_STR(OO_ATTR), 
+   OO_STR(OO_ARG), 
+   OO_STR(OO_RUNS), 
+   OO_STR(OO_NEXT),
+   OO_STR(OO_NUM_OPERS),
+   NULL 
+};
 
 /*  Concept Destructor */
 static int 
@@ -38,6 +53,7 @@ ooConcept_del(ooConcept *self)
     /* free up your subordinate resources */
 
     free(self->name);
+    free(self->id);
     
     if (self->bytecode != NULL) free(self->bytecode);
 
@@ -48,7 +64,7 @@ ooConcept_del(ooConcept *self)
 
 
     free(self);
-    self = NULL;
+
     return oo_OK;
 }
 
@@ -57,7 +73,7 @@ static const char*
 ooConcept_str(ooConcept *self)
 {
     size_t i;
-    printf("Concept id: %lu name: %s\n", 
+    printf("Concept id: %s name: %s\n", 
            self->id, self->name);
 
     for (i = 0; i < self->_num_attrs; i++) {
@@ -65,10 +81,10 @@ ooConcept_str(ooConcept *self)
 	    continue;
 	printf("%d\n", i);
 	printf("  -- attr >>> [%lu]\n",
-          self->_attrs[i]->concid );
+	       (unsigned long)self->_attrs[i]->concid );
     }
 
-    return L"Concept presentation";
+    return "Concept presentation";
 }
 
 
@@ -195,14 +211,14 @@ int ooConcept_pack(struct ooConcept *self, pack_type pt)
                 (num_attrs * attr_size);
 
     buf = malloc(buf_size);
-    if (!buf)	return FAIL;
+    if (!buf)	return oo_FAIL;
 
     ret = ooConcept_pack_header(self, buf);
-    if (ret != oo_OK) return FAIL;
+    if (ret != oo_OK) return oo_FAIL;
 
     ret = ooConcept_pack_attrs(self, buf + header_size, 
 		  (unsigned short)num_attrs, attr_size);
-    if (ret != oo_OK) return FAIL;
+    if (ret != oo_OK) return oo_FAIL;
 
     /* TODO: pack the search indices */
 
@@ -210,7 +226,7 @@ int ooConcept_pack(struct ooConcept *self, pack_type pt)
     self->bytecode_size = buf_size;
 
     if (DEBUG_LEVEL_3) {
-	printf("Concept %ld   bytecode_size: %d\n",
+	printf("Concept %s   bytecode_size: %d\n",
           self->id, self->bytecode_size);
     }
     return oo_OK;
@@ -228,7 +244,7 @@ int ooConcept_unpack_attr(ooConcept *self,
                          const char *buf, 
                              size_t  item_pos)
 {
-    oper_type operid;
+    oo_oper_type operid;
     mindmap_size_t concid;
     grade_t relevance = 0;
     bool  is_affirmed = true;
@@ -246,7 +262,7 @@ int ooConcept_unpack_attr(ooConcept *self,
 
     /* allocating and initializing a new attribute */
     newattr = malloc(sizeof(*newattr));
-    if (newattr == NULL) return FAIL;
+    if (newattr == NULL) return oo_FAIL;
 
     newattr->operid = operid;
     newattr->concid = concid;
@@ -322,21 +338,21 @@ int ooConcept_unpack(ooConcept *self)
     c = (unsigned char)self->bytecode[i++];
     self->name_size = (size_t)c;
     self->name = malloc(self->name_size + 1);
-    if (self->name == NULL)
-	return FAIL;
+    if (!self->name)
+	return oo_FAIL;
 
     memcpy(self->name, &self->bytecode[i], self->name_size);
     self->name[self->name_size] = '\0';
     i += self->name_size;
 
     if (DEBUG_LEVEL_3) {
-	printf("Unpacking concept %ld bytecode size: %d\n",
+	printf("Unpacking concept %s bytecode size: %d\n",
                  self->id, self->bytecode_size);
     }
     /*** unpack the attributes ***/
     ret = ooConcept_unpack_attrs(self, &self->bytecode[i]);
     if (ret != oo_OK)
-	return FAIL;
+	return oo_FAIL;
 
     self->bytecode = NULL;
     self->bytecode_size = 0;
@@ -355,16 +371,16 @@ int ooConcept_put(struct ooConcept *self, DB *dbp)
 
     /* does this concept need saving? */
     if (!self->_is_modified)
-	return FAIL;
+	return oo_FAIL;
 
     if (DEBUG_LEVEL_1) {
-	printf("Packing the concept \"%s\" [%ld]...\n",
+	printf("Packing the concept \"%s\" [%s]...\n",
             self->name, self->id);
     }
     /* serialize yourself */
     ret = self->pack(self, PACK_COMPACT);
     if (ret != oo_OK)
-	return FAIL;
+	return oo_FAIL;
 
     /* initialize the DBTs */
     memset(&key, 0, sizeof(DBT));
@@ -373,9 +389,9 @@ int ooConcept_put(struct ooConcept *self, DB *dbp)
     /* prepare the key: the Concept id */
     key.data = malloc(idsize);
     if (!key.data)
-	return FAIL;
+	return oo_FAIL;
 
-    memcpy(key.data, &(self->id), idsize);
+    memcpy(key.data, &(self->numid), idsize);
     key.size  =  (u_int32_t)idsize;
 
     data.data  = self->bytecode;
@@ -383,7 +399,7 @@ int ooConcept_put(struct ooConcept *self, DB *dbp)
 
     ret = dbp->put(dbp, NULL, &key, &data, 0);
     if (ret != oo_OK)
-	return FAIL;
+	return oo_FAIL;
 
     /* now that the concept is saved 
      * switch the modification flag  */
@@ -428,7 +444,7 @@ int ooConcept_setattr(struct ooConcept *self,
 		      struct ooConcept *value )
 {   ooAttr *attr;
     attr = ooConcept_getattr(self, concid);
-    if (!attr) return FAIL;
+    if (!attr) return oo_FAIL;
 
     /* TODO: check the subclass */
 
@@ -440,10 +456,10 @@ int ooConcept_setattr(struct ooConcept *self,
 /*  allocate, initialize and assign a new attribute */
 static int
 ooConcept_initattr(struct ooConcept *self, 
-		             oper_type  operid,
-		       struct ooConcept *attrconc, 
-                                   bool  is_affirmed,
-                         unsigned short  relevance)
+		   oo_oper_type  operid,
+		   struct ooConcept *attrconc, 
+		   bool  is_affirmed,
+		   unsigned short  relevance)
 {   ooAttr *newattr;
     ooAttr **ptr;
     static size_t attr_size = sizeof(ooAttr);
@@ -451,10 +467,10 @@ ooConcept_initattr(struct ooConcept *self,
     size_t attr_array_size;
 
     newattr = malloc(attr_size);
-    if (!newattr) return FAIL;
+    if (!newattr) return oo_FAIL;
 
     newattr->operid = operid;
-    newattr->concid = attrconc->id;
+    newattr->concid = attrconc->numid;
     newattr->is_affirmed = is_affirmed;
     newattr->baseclass = attrconc;
     newattr->relevance = relevance;
@@ -464,7 +480,7 @@ ooConcept_initattr(struct ooConcept *self,
 
     attr_array_size = attr_ptr_size * (self->_num_attrs + 1);
     ptr = (ooAttr**)realloc(self->_attrs, attr_array_size);
-    if (!ptr) return FAIL;
+    if (!ptr) return oo_FAIL;
 
     self->_attrs = ptr;
     self->_attrs[self->_num_attrs] = newattr;
@@ -477,26 +493,26 @@ ooConcept_initattr(struct ooConcept *self,
 /*  add a new attribute */
 static
 int ooConcept_newattr(struct ooConcept *self, 
-                             oper_type  operid,
+                             oo_oper_type  operid,
 		      struct ooConcept *attrconc, 
                                   bool  is_affirmed,
                         unsigned short  relevance)
 {   int ret;
     if (DEBUG_LEVEL_3) {
-	printf("Concept %ld is adding a new attr \"%ld\"\n",
+	printf("Concept %s is adding a new attr \"%s\"\n",
 	       self->id, attrconc->id);
     }
     /* check if this attribute is already set
      * to avoid loops  */
-    if (self->getattr(self, attrconc->id))
-	return FAIL;
+    if (self->getattr(self, attrconc->numid))
+	return oo_FAIL;
 
     if (self->_num_attrs + 1 > ATTR_MAX)
-	return FAIL;
+	return oo_FAIL;
 
     ret = ooConcept_initattr(self, operid, attrconc,
                              is_affirmed, relevance);
-    if (ret != oo_OK) return FAIL;
+    if (ret != oo_OK) return oo_FAIL;
 
     /* TODO: notify our parent's search engine */
     /*ret = ooConcept_notify(self, operid, attrconc); */
@@ -521,7 +537,7 @@ int ooConcept_delattr(struct ooConcept *self, mindmap_size_t concid)
 	    return oo_OK;
 	}
     }
-    return FAIL;
+    return oo_FAIL;
 }
 
 /**
@@ -569,13 +585,14 @@ int ooRefNode_new(ooRefNode **refnode,
 	     mindmap_size_t  dest_concid,
 	     mindmap_size_t  child_concid,
 	     mindmap_size_t  path_length)
-{   ooRefNode *ptr;
+{
+    ooRefNode *ptr;
     ooGuide *g;
     ptr = malloc(sizeof(ooRefNode));
-    if (!ptr) return FAIL;
+    if (!ptr) return oo_FAIL;
 
     g = malloc(sizeof(ooGuide));
-    if (g == NULL) return FAIL;
+    if (g == NULL) return oo_FAIL;
 
     ptr->concid = dest_concid;
     g->concid = child_concid;
@@ -594,7 +611,7 @@ int ooRefNode_add_guide(ooRefNode *refnode,
 {   ooGuide *ptr;
     ptr = realloc(refnode->guides,
 	     sizeof(*ptr) * (refnode->num_guides + 1));
-    if (ptr == NULL) return FAIL;
+    if (ptr == NULL) return oo_FAIL;
 
     /*ptr[refnode->num_guides]->concid = child_concid;
     ptr[refnode->num_guides]->len = path_length;
@@ -631,14 +648,14 @@ int ooRefList_add_ref(ooRefList *self,
 	};
 	/* gotcha! */
 	ret = ooRefNode_add_guide(ptr, child_concid, path_length);
-	if (ret != oo_OK) return FAIL;
+	if (ret != oo_OK) return oo_FAIL;
 	return oo_OK;
     }
 
     /* no match was found,
      * adding a new RefNode to the end of the RefList */
     ret = ooRefNode_new(&ptr, dest_concid, child_concid, path_length);
-    if (ret != oo_OK) return FAIL;
+    if (ret != oo_OK) return oo_FAIL;
     return oo_OK;
 }
 
@@ -663,54 +680,89 @@ int ooRefList_drop_guide(struct ooRefList *self,
 	}
 	/* gotcha! */
 	ret = ooRefNode_drop_guide(ptr, child_concid);
-	if (ret != oo_OK) return FAIL;
+	if (ret != oo_OK) return oo_FAIL;
 	return oo_OK;
     }
-    return FAIL;
+    return oo_FAIL;
 }
 
 
 static int
 ooConcept_read_XML(struct ooConcept *self, 
-		   xmlNode *input_node)
+		   xmlNode *input_node,
+		   struct ooMindMap *mm,
+		   struct ooDomain *domain)
 {
     xmlNode *cur_node = NULL;
-    char *value;
+    xmlNode *deriv_node = NULL;
+    struct ooConcept *c;
     int ret;
 
-    value = (char*)xmlGetProp(input_node,  (const xmlChar *)"name");
-    if (value) {
-	self->name_size = strlen(value);
-	self->name = malloc(self->name_size + 1);
-	if (!self->name) {
-	    xmlFree(value);
-	    return oo_NOMEM;
-	}
-	strcpy(self->name, value);
-	xmlFree(value);
-    }
+    /* required */
+    ret = oo_copy_xmlattr(input_node, "name", &self->name, &self->name_size);
+    if (ret != oo_OK) return ret;
 
-    printf("...Reading concept \"%s\"...\n", self->name);
+    ret = oo_copy_xmlattr(input_node, "classid", &self->id, &self->id_size);
+    if (ret != oo_OK) return ret;
+
+    /* optional */
+    /*ret = oo_copy_xmlattr(input_node, "annot", &self->annot, &self->annot_size);*/
+
+    /*printf("...Reading concept \"%s\"...\n", self->name);*/
 
     for (cur_node = input_node->children; cur_node; cur_node = cur_node->next) {
 	if (cur_node->type != XML_ELEMENT_NODE) continue;
 
+        /* derivatives */
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"derivs"))) {
+	    for (deriv_node = cur_node->children; 
+		 deriv_node; 
+		 deriv_node = deriv_node->next) {
+		if (deriv_node->type != XML_ELEMENT_NODE) continue;
+
+		if ((!xmlStrcmp(deriv_node->name, (const xmlChar *)"concept"))) {
+		    ret = ooConcept_new(&c);
+		    if (ret != oo_OK) return ret;
+
+		    ret = c->read(c, deriv_node, mm, domain);
+		    if (ret != oo_OK) {
+			c->del(c);
+			return ret;
+		    }
+		}
+
+	    }
+	}
     }
+
+    ret = domain->add_concept(domain, self);
+    if (ret != oo_OK) return ret;
+
+    ret = mm->add_concept(mm, self);
+    if (ret != oo_OK) return ret;
+
 
     return oo_OK;
 }
 
-/*  Concept Constructor */
+/*  Concept Initializer */
 extern int
-ooConcept_init(struct ooConcept **conc)
+ooConcept_init(struct ooConcept *self)
 {
-    int ret;
-    struct ooConcept *self = malloc(sizeof(struct ooConcept));
-    if (!self) return oo_NOMEM;
+    self->numid = 0;
 
-    self->id = 0;
+    self->id = NULL;
+    self->id_size = 0;
+
     self->name = NULL;
     self->name_size = 0;
+
+    self->domain = NULL;
+
+    self->complexity = 0;
+
+    self->annot = NULL;
+    self->annot_size = NULL;
 
     self->bytecode = NULL;
     self->bytecode_size = 0;
@@ -722,19 +774,21 @@ ooConcept_init(struct ooConcept **conc)
     /* initialize the plain search RefList
     self->_reflist = malloc(sizeof(ooRefList));
     if (!self->_reflist)
-	return FAIL;
+	return oo_FAIL;
     */
 
     /* initialize the BTree search index */
     /*
     NEW(ooBTree, self->_bt_index);
     if (ret != oo_OK)
-	return FAIL;
+	return oo_FAIL;
     */
+
 
     /* public methods */
     self->del = ooConcept_del;
     self->str = ooConcept_str;
+    self->init = ooConcept_init;
     self->read = ooConcept_read_XML;
 
     self->pack = ooConcept_pack;
@@ -748,6 +802,21 @@ ooConcept_init(struct ooConcept **conc)
     self->getattr = ooConcept_getattr;
 
     self->lookup = ooConcept_lookup;
+
+    return oo_OK;
+}
+
+
+/*  Concept Constructor */
+extern int
+ooConcept_new(struct ooConcept **conc)
+{
+    int ret;
+
+    struct ooConcept *self = malloc(sizeof(struct ooConcept));
+    if (!self) return oo_NOMEM;
+
+    ret = ooConcept_init(self);
 
     *conc = self;
     return oo_OK;

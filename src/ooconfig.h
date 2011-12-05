@@ -21,6 +21,9 @@
 #ifndef OO_CONFIG_H
 #define OO_CONFIG_H
 
+/* converting enum names to strings */
+#define OO_STR(s) #s
+
 /* return error codes */
 enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 
@@ -52,8 +55,14 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 #endif
 
 
-#define INPUT_BUF_SIZE 256
+#define INTERACT_INPUT_BUF_SIZE 256
+
+#define INPUT_BUF_SIZE 256 /*256*/
+
 /*#define SEGM_SIZE 512*/
+
+#define ACCU_CONCFREQ_STORAGE_SIZE 512
+#define ACCU_MAX_CONCFREQS 10
 
 #define AGENDA_CONCUNIT_STORAGE_SIZE 1024
 #define AGENDA_INDEX_SIZE 1024
@@ -62,9 +71,12 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 #define AGENDA_COMPLEX_POOL_SIZE 24
 #define CONCUNIT_COMPLEX_POOL_SIZE 4
 
-#define INTERP_POOL_SIZE 4
+#define INTERP_POOL_SIZE 8
 
 #define TOPIC_POOL_SIZE 12
+#define TOPIC_SHOW_LIMIT 3
+#define NUM_TOPIC_INGREDIENTS 32
+#define CONC_RATING_SIZE 32
 
 #define DEFAULT_CONCEPT_COMPLEXITY 1.0
 
@@ -75,7 +87,7 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 #define NUM_GROUP_ITEMS 1
 
 #define OUTPUT_BUF_SIZE 1024 * 1024
-#define TEMP_BUF_SIZE 1024
+#define TEMP_BUF_SIZE 1024 * 1024
 
 #define INDEX_REALLOC_FACTOR 2
 #define DEFAULT_INDEX_SIZE 1024
@@ -154,7 +166,7 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 #define COMPLEX_PENALTY 10
 
 /* weight gain bonus for correct linking */
-#define OPER_SUCCESS_BONUS 5
+#define OPER_SUCCESS_BONUS 1
 
 
 /* RAG binary packing: size in bytes */
@@ -170,6 +182,8 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 
 #define ATOM_BYTE 1
 
+#define MAX_CONC_ID_SIZE 256
+
 /* caching in bytes */
 #define MAX_MEMCACHE_SIZE 160 * 1024 * 1024
 #define DEFAULT_MATRIX_DEPTH 3
@@ -177,6 +191,8 @@ enum { oo_OK, oo_FAIL, FAIL, oo_NOMEM, oo_NO_RESULTS } oo_err_codes;
 
 #define UCS2_MAX 65535
 #define NUMERIC_CODE_TYPE size_t
+
+#define CODE_VERIFICATION_BONUS 10
 
 typedef enum pack_type { PACK_COMPACT, 
                          PACK_RAG,

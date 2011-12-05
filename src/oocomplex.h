@@ -23,13 +23,16 @@
 
 #include "ooconstraint.h"
 
-/* forward declaration */
-struct ooCodeAttr;
+/* forward declarations */
+struct ooCodeSpec;
 struct ooAccu;
+struct ooConcept;
+struct ooConcUnit;
 
 typedef struct ooInterp {
     struct ooConcept *conc;
     int weight;
+
 } ooInterp;
 
 
@@ -90,7 +93,7 @@ typedef struct ooComplex {
     struct ooConcUnit *end_delim;
 
     /* fixed array of operations */
-    struct ooComplex *specs[NUM_OPERS];
+    struct ooComplex *specs[OO_NUM_OPERS];
 
     /* for indices */
     struct ooComplex *next;
@@ -115,11 +118,11 @@ typedef struct ooComplex {
     int (*join)(struct ooComplex *self,
 	        struct ooComplex *child,
 	        struct ooComplex *result,
-	        struct ooCodeAttr *attr);
+	        struct ooCodeSpec *spec);
 
     int (*forget)(struct ooComplex *self, 
 		  struct ooComplex *prev,
-		  struct ooCodeAttr *attr);
+		  struct ooCodeSpec *spec);
 
   /*int (*find_solution)(struct ooComplex *self, 
     struct ooComplex **linear_index);*/

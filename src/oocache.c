@@ -54,15 +54,11 @@ ooLinearCache_del(struct ooLinearCache *self)
 	if (codes) free(codes);
     }
 
-    if (self->codes) {
+    if (self->codes)
 	self->codes->del(self->codes);
-	free(self->codes);
-    }
 
-    if (self->code_list_sizes) {
+    if (self->code_list_sizes)
 	self->code_list_sizes->del(self->code_list_sizes);
-	free(self->code_list_sizes);
-    }
 
     /* remove every cell */
     for (i = 0; i < self->num_cells; i++) {
@@ -88,10 +84,15 @@ ooLinearCache_del(struct ooLinearCache *self)
 	free(cell);
     }
 
-    free(self->row_sizes);
-    free(self->matrix);
+    if (self->row_sizes)
+	free(self->row_sizes);
 
-    free(self->codeseqs);
+
+    if (self->matrix)
+      free(self->matrix);
+
+    if (self->codeseqs)
+	free(self->codeseqs);
 
     if (self->provider_name)
 	free(self->provider_name);
@@ -138,8 +139,8 @@ ooLinearCache_str(struct ooLinearCache *self)
 
 
 /* compare the equality of two tails */
-static
-int ooLinearCache_tail_match(struct ooLinearCache *self,
+static int 
+ooLinearCache_tail_match(struct ooLinearCache *self,
 		       struct ooLinearCacheTail  *tail,
 		       size_t *newtail,
 		       size_t newtail_len)
@@ -157,10 +158,11 @@ int ooLinearCache_tail_match(struct ooLinearCache *self,
 
 /* linear search of the matching tail */
 static
-struct ooLinearCacheTail* ooLinearCache_find_tail(struct ooLinearCache *self,
-			       struct ooLinearCacheCell *cell,
-			       size_t *newtail,
-			       size_t newtail_len)
+struct ooLinearCacheTail* 
+ooLinearCache_find_tail(struct ooLinearCache *self,
+			struct ooLinearCacheCell *cell,
+			size_t *newtail,
+			size_t newtail_len)
 {   size_t i;
     int ret;
     struct ooLinearCacheTail *tail = NULL;
@@ -371,7 +373,7 @@ ooLinearCache_insert_code(struct ooLinearCache *self,
 
 static
 int ooLinearCache_populate_matrix(struct ooLinearCache *self)
-{   
+{
     struct ooSegmentizer *segm;
     struct ooDecoder *dec;
     size_t i;
@@ -434,6 +436,8 @@ int ooLinearCache_populate_matrix(struct ooLinearCache *self)
 	ret = ooLinearCache_insert_code(self, seq, segm);
 	fprintf(stderr, "   .. codes added: %d...\r", i);
     }
+    
+    fprintf(stderr, "Total codes: %d\n", i);
 
     segm->del(segm);
 
@@ -505,12 +509,13 @@ int ooLinearCache_set(struct ooLinearCache *self,
 
 static
 int ooLinearCache_update_agenda(struct ooLinearCache *self, 
-			  struct ooLinearCacheTail *tail,
-			  size_t linear_pos,
-			  size_t coverage,
-			  size_t term_count,
-			  size_t num_terms,
-			  struct ooAgenda *agenda)
+				struct ooLinearCacheTail *tail,
+				size_t linear_pos,
+				size_t coverage,
+				size_t start_term_pos,
+				size_t end_term_pos,
+				bool is_sparse,
+				struct ooAgenda *agenda)
 {
     struct ooConcUnit *cu;
     struct ooCodeMatch *cm;
@@ -527,8 +532,11 @@ int ooLinearCache_update_agenda(struct ooLinearCache *self,
 	cu->concid = cu->code->id;
 	cu->linear_pos = linear_pos;
 	cu->coverage = coverage;
-	cu->start_term_pos = term_count;
-	cu->num_terminals = num_terms;
+
+	cu->start_term_pos = start_term_pos;
+	cu->num_terminals = end_term_pos - start_term_pos;
+
+	cu->is_sparse = is_sparse;
 
 	if (DEBUG_CACHE_LEVEL_3) {
 	    printf("  ++ cache match:\n");
@@ -548,27 +556,36 @@ int ooLinearCache_update_agenda(struct ooLinearCache *self,
 static
 int ooLinearCache_match(struct ooLinearCache *self, 
 		  size_t curr_pos,
-		  size_t term_count,
 		  size_t *tail_buf,
 		  struct ooSegmentizer *segm,
 		  struct ooAgenda *agenda)
-{   int ret, success = oo_FAIL;
+{
+    struct ooConcUnit *cu, *first_cu = NULL, *prev_cu = NULL;
+    struct ooLinearCacheCell *cell;
+    struct ooLinearCacheTail *tail;
+    bool is_sparse = false;
+
     size_t i, pos = 0, cur_depth = 0;
     size_t coverage = 0, num_terms = 0;
     size_t tail_len = 0, max_tail_len = 0;
-    struct ooConcUnit *cu = NULL;
-    struct ooLinearCacheCell *cell;
-    struct ooLinearCacheTail *tail;
+
+    int ret, success = oo_FAIL;
 
     for (i = curr_pos; i < segm->agenda->last_idx_pos; i++) {
 	cu = segm->agenda->index[i];
 	if (!cu) continue;
-	num_terms++;
 
 	/* unrecognized unit is met */
-	if (cu->concid == 0) {
-	    if (i == 0) break;
-	}
+	if (!cu->concid) break; 
+
+	if (!first_cu)
+	    first_cu = cu;
+
+	if (prev_cu && 
+	    prev_cu->linear_pos + prev_cu->coverage != cu->linear_pos)
+	    is_sparse = true;
+
+	prev_cu = cu;
 	coverage += cu->coverage;
 
 	/* calculate the position in the flat matrix */
@@ -586,8 +603,6 @@ int ooLinearCache_match(struct ooLinearCache *self,
 	/*printf("UNIT: %zu  CONCID: %zu  DEPTH: %zu  MATRIX_POS: %zu\n", 
 	  num_terms, cu->concid, cur_depth, pos);*/
 
-
-
 	/* this should never happen.. but just in case.. */
 	if (pos > self->matrix_size) break;
 
@@ -602,8 +617,10 @@ int ooLinearCache_match(struct ooLinearCache *self,
 
 	/* register this tail */
 	ret = ooLinearCache_update_agenda(self, tail,
-				    curr_pos, coverage, 
-				    term_count, num_terms, agenda);
+					  curr_pos, coverage, 
+					  first_cu->start_term_pos, 
+					  cu->start_term_pos + cu->num_terminals, 
+					  is_sparse, agenda);
     }
     return success;
 }
@@ -620,7 +637,7 @@ int ooLinearCache_lookup(struct ooLinearCache *self,
 			 size_t               task_id,
 			 struct ooAgenda      *agenda)
 {   
-    size_t i, tail_buf[INPUT_BUF_SIZE], term_count = 0;
+    size_t i, tail_buf[INPUT_BUF_SIZE];
     struct ooConcUnit *cu = NULL, *src_cu = NULL;
     int ret;
 
@@ -641,8 +658,6 @@ int ooLinearCache_lookup(struct ooLinearCache *self,
 	src_cu = segm->agenda->index[i];
 	if (!src_cu) continue;
 
-	term_count++;
-
 	if (!src_cu->concid) continue;
 
 	if (DEBUG_CACHE_LEVEL_3)
@@ -654,23 +669,25 @@ int ooLinearCache_lookup(struct ooLinearCache *self,
          */
 	cu = agenda->alloc_unit(agenda);
 	if (!cu) return oo_NOMEM;
+
 	cu->linear_pos = src_cu->linear_pos;
 	cu->coverage = src_cu->coverage;
+	cu->start_term_pos = src_cu->start_term_pos;
+	cu->num_terminals = src_cu->num_terminals;
+
 	cu->terminals = src_cu;
 	agenda->index[i] = cu;
 
 	/* now try to match sequences starting from this position
          * with the valid linear sequences 
          */
-	ret = ooLinearCache_match(self, i, term_count - 1, tail_buf, segm, agenda);
+	ret = ooLinearCache_match(self, i, 
+				  tail_buf, segm, agenda);
     }
 
 
-    if (DEBUG_CACHE_LEVEL_2) {
-	printf("\n   == Total terminal symbols read by ooLinearCache: %lu\n", 
-	       (unsigned long)term_count);
+    if (DEBUG_CACHE_LEVEL_2)
 	agenda->str(agenda);
-    }
 
     return oo_OK;
 }
@@ -748,6 +765,7 @@ int ooLinearCache_new(struct ooLinearCache **cache)
 
     self->repr = NULL;
 
+    self->row_sizes = NULL;
     self->matrix = NULL;
     self->matrix_depth = DEFAULT_MATRIX_DEPTH;
     self->max_unrec_chars = DEFAULT_MAX_UNREC_CHARS;

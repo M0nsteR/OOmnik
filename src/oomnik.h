@@ -61,10 +61,9 @@ typedef struct OOmnik {
     int (*reload)(struct OOmnik *self);
 
     /*  process string from memory */
-    int (*process)(struct OOmnik *self, 
-		   struct ooDecoder *dec,
+    int (*process)(void *self, 
 		   const char *input,
-		   output_type format);
+		   int format);
 
     /***********  private attributes ************/
 
@@ -83,7 +82,7 @@ EXPORT extern void* OOmnik_create(const char *conf_name);
 EXPORT extern const char* OOmnik_process(void *oomnik, 
 					 const char *buf,
 					 int format);
-EXPORT extern int OOmnik_free_result(void *buf);
+EXPORT extern int OOmnik_free_result(const char *buf);
 
 extern int OOmnik_new(struct OOmnik **self);
 

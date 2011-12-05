@@ -52,12 +52,15 @@ typedef struct ooConcUnit {
 
     /* complex units */
     struct ooConcUnit *fixed_parent;
-    oper_type fixed_operid;
+    oo_oper_type fixed_operid;
 
     /* reference to terminal units */
     struct ooConcUnit *terminals;
     size_t start_term_pos;
     size_t num_terminals;
+
+    /* contains inner breaks */
+    bool is_sparse;
 
     /* syntax groupings */
     bool is_group;
@@ -111,7 +114,7 @@ typedef struct ooConcUnit {
     /* adding complexes from child */
     int (*add_children)(struct ooConcUnit *self,
 			struct ooConcUnit *child,
-			struct ooCodeAttr *attr);
+			struct ooCodeSpec *spec);
 } ooConcUnit;
 
 extern int ooConcUnit_init(struct ooConcUnit *self);

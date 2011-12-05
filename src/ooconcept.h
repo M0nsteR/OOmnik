@@ -27,27 +27,42 @@
 #include "ooconfig.h"
 
 struct ooMindMap;
+struct ooDomain;
 
 typedef enum logic_opers { LOGIC_AND, LOGIC_OR } logic_opers;
 
-typedef enum conc_type { ATOM,     /* atomic system unit: byte */
-                         STATIC,   /* entity */
-                         DYNAMIC,  /* method */
-                         GROUP,      /* AND  */
-                         SELECT_ONE, /* OR */
-                         SELECT_REST /* NOT */
-                       } conc_type;
+typedef enum conc_type { 
+    ATOM,     /* atomic system unit: byte */
+    STATIC,   /* entity */
+    DYNAMIC,  /* method */
+    GROUP,      /* AND  */
+    SELECT_ONE, /* OR */
+    SELECT_REST /* NOT */
+} conc_type;
 
-typedef enum oper_type { NONE, IS_SUBCLASS, AGGREGATES, 
-                         HAS_ATTR, 
-                         TAKES_ARG, DENOTES, RUNS, 
-			 PRECEEDS, NEXT_IN_GROUP,
-			 START_REVERSE_OPERS,
-			 SUBCLASSED_BY, CONSTITUTES, IS_ATTR_OF, IS_ARG, DENOTED_BY, 
-			 FOLLOWS, PREV_IN_GROUP,
-			 IS_RUN, NUM_OPERS } oper_type;
 
-typedef enum linear_type { ANYPOS, PREPOS, POSTPOS } linear_type;
+/* NB: manual syncronization with the string array 
+ * "oo_oper_type_names" initialized in ooconcept.c 
+ * is required here! */
+typedef enum oo_oper_type { 
+    OO_NONE = 0, 
+    OO_IS_SUBCLASS, 
+    OO_AGGREGATES, 
+    OO_ATTR, 
+    OO_ARG, 
+    OO_RUNS, 
+    OO_NEXT,
+    OO_NUM_OPERS 
+} oo_oper_type;
+
+extern const char *oo_oper_type_names[];
+
+typedef enum linear_type { 
+    OO_ANY_POS = 0, 
+    OO_PRE_POS, 
+    OO_INNER_POS, 
+    OO_POST_POS 
+} linear_type;
 
 /* Path:
    a list of points to get from to the destination concept */
@@ -60,7 +75,7 @@ typedef struct ooPath {
 
 /* Concept Attribute aka Feature */
 typedef struct ooAttr {
-    oper_type operid;
+    enum oo_oper_type operid;
 
     /* child concept id for lazy evaluation:
        type and value pointers are NULL
@@ -111,21 +126,30 @@ typedef struct ooRefList {
 } ooRefList;
 
 
-/** A Concept is a named Container of Attributes:
+/** A Concept is an addressable Container of Attributes:
  *  a piece of memory that is shared 
  *  by many Concept Units (aka instances)
- *  for the purposes of effective storage of common features 
+ *  for the purposes of economic storage of common features 
  */
 typedef struct ooConcept {
     conc_type type;
-    mindmap_size_t id;
+
+    size_t numid;
+  
+    char *id;
+    size_t id_size;
 
     /* unique name representation in atomic codes */
     char *name;
     size_t name_size;  /* for packing */
 
+    struct ooDomain *domain;
+
+    float complexity;
+
     /* any comments, explanations, examples of usage etc. go here */
-    char *description;
+    char *annot;
+    size_t annot_size;
 
     /** packed binary string representation 
      * of the concept for the DB storage 
@@ -141,7 +165,9 @@ typedef struct ooConcept {
     const char* (*str)(struct ooConcept *self);
 
     int (*read)(struct ooConcept *self, 
-		xmlNode *input_node);
+		xmlNode *input_node,
+		struct ooMindMap *mm,
+		struct ooDomain *domain);
 
     int (*resolve_refs)(struct ooConcept *self, 
 			struct ooMindMap *mindmap);
@@ -161,13 +187,13 @@ typedef struct ooConcept {
     /*** attribute management ***/
 
     int (*newattr)(struct ooConcept *self,  
-                          oper_type  operid,
+		   enum oo_oper_type      operid,
 		   struct ooConcept *conc, 
                                bool  is_affirmed,
                      unsigned short  relevance);
 
-    int (*delattr)( struct ooConcept *self,  
-                      mindmap_size_t  concid);
+    int (*delattr)(struct ooConcept *self,  
+		   mindmap_size_t  concid);
 
     int (*setattr)(struct ooConcept *self, 
                      mindmap_size_t  concid, 
@@ -184,7 +210,7 @@ typedef struct ooConcept {
      ***********************/
 
     bool _is_modified;     /**< tracking changes */
-    bool _is_visited;      /**< avoiding loops */
+    bool _is_visited;      /**< loop detection */
 
     /* Concept Attributes: 
        array of pointers to ooAttr */
@@ -212,7 +238,7 @@ typedef struct ooConcept {
  * @param self a double pointer used to assign
  *             an external reference
  */
-extern int ooConcept_init(struct ooConcept **self);
+extern int ooConcept_new(struct ooConcept **self);
 
 #endif
 

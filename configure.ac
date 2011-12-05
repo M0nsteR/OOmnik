@@ -34,8 +34,10 @@ if test -n "$GCC"; then
 fi
 
 # Checks for libraries.
-DB4_LIBS="-ldb"
-AC_SUBST(DB4_LIBS)
+AC_CHECK_LIB([db], [db_create], [], [echo "Error! You need to have libdb around."; exit -1 ])
+AC_CHECK_LIB([xml2], [xmlStrcmp], [], [echo "Error! You need to have libxml2 around."; exit -1 ])
+
+PKG_CHECK_MODULES(XML, libxml-2.0 >= 2.4)
 
 # Checks for header files.
 AC_HEADER_STDC

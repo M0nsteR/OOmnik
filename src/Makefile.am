@@ -24,8 +24,6 @@ liboomnik_la_SOURCES = oomnik.h oomnik.c\
                     oodict.h oodict.c\
                     ooutils.h ooutils.c
 
-liboomnik_la_INCLUDE = /usr/include/libxml2
-
 include_HEADERS =  oomnik.h ooconfig.h\
                     oomindmap.h\
                     oodomain.h\
@@ -48,8 +46,7 @@ include_HEADERS =  oomnik.h ooconfig.h\
 
 bin_PROGRAMS = oomnik
 oomnik_SOURCES = main.c
-oomnik_INCLUDE = -I/usr/include/libxml2
 
-oomnik_LDADD = liboomnik.la -ldb -lxml2
+oomnik_LDADD = liboomnik.la
 
 
